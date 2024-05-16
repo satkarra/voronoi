@@ -415,7 +415,7 @@ contains
       type(grid_type) :: grid
       character(len=3) :: tcell
       character(len=5) :: tmp_str
-      PetscInt :: fileid, ivertex, iatt, irank, remainder, root
+      PetscInt :: fileid, ivertex, iatt, irank, remainder
       PetscInt :: temp_int1, temp_int2, temp_int3, num_to_read, num_to_read_save, ielem
       PetscInt :: data(5)
       PetscInt :: ifrac
@@ -433,18 +433,12 @@ contains
       PetscInt :: length
       PetscInt :: dim_skip
       PetscInt :: ierror, ilen, itype
-      PetscInt :: nsdtopo, nsdgeom, npoints, ntets
 
-      pointer(ixic, xic)
-      pointer(iyic, yic)
-      pointer(izic, zic)
-      pointer(ipitet, itet_8)
-      pointer(ipitettyp, itettyp_8)
-      pointer(ipimt1, imt1_8)
+#if DEBUG
+      PetscViewer :: viewer
+      character(len=150) :: string, word
+#endif
 
-      PetscReal xic(*), yic(*), zic(*)
-      integer*8 itet_8(*), itettyp_8(*), imt1_8(*)
-      PetscInt, allocatable :: itet(:), itettyp(:)
       PetscReal, allocatable :: imt1(:)
 
       if (rank == io_rank) then
@@ -539,13 +533,7 @@ contains
 
          ! Read coordinates and store
          do ivertex = 1, grid%num_pts_global
-
-            if (grid%lg_flag .eqv. PETSC_TRUE) then
-               temp_real = (/float(ivertex), real(xic(ivertex)), real(yic(ivertex)), real(zic(ivertex))/)
-            else
-               read (fileid, *) temp_real
-            endif
-
+            read (fileid, *) temp_real
             temp_real_array((ivertex - 1)*4 + 1:(ivertex - 1)*4 + 4) = temp_real
 
          enddo
@@ -642,30 +630,9 @@ contains
          allocate (temp_int(dim_skip))
 
          do ielem = 1, grid%num_elems_global
-
-            ! Construct grid matrix from LaGriT pointers...
-            if (grid%lg_flag .eqv. PETSC_TRUE) then
-               if (grid%ndim == 2) then
-                  temp_int = (/ielem, &
-                               int(itet(3*(ielem - 1) + 1)), &
-                               int(itet(3*(ielem - 1) + 2)), &
-                               int(itet(3*(ielem - 1) + 3))/)
-               else
-                  temp_int = (/ielem, &
-                               int(itet(4*(ielem - 1) + 1)), &
-                               int(itet(4*(ielem - 1) + 2)), &
-                               int(itet(4*(ielem - 1) + 4)), &
-                               int(itet(4*(ielem - 1) + 3))/)
-               endif
-               ! Or, construct from AVS infile
-            else
-               read (fileid, *) temp_int(1), ifrac, tcell, temp_int(2:grid%ndim + 2)
-            endif
-
+            read (fileid, *) temp_int(1), ifrac, tcell, temp_int(2:grid%ndim + 2)
             temp_int_array((ielem - 1)*dim_skip + 1:(ielem - 1)*dim_skip + dim_skip) = temp_int
-
          enddo
-
          deallocate (temp_int)
       endif
 
@@ -687,7 +654,7 @@ contains
 
       allocate (temp_int(grid%num_elems_local*dim_skip))
       call MPI_Scatterv(temp_int_array, sendcounts, pos, MPI_INT, &
-                        temp_int, size, MPI_INT, root, &
+                        temp_int, grid%num_elems_local*dim_skip, MPI_INT, io_rank, &
                         MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
       if (rank == io_rank) deallocate (temp_int_array)
 
@@ -700,9 +667,6 @@ contains
       deallocate (temp_int)
       deallocate (pos)
       deallocate (sendcounts)
-
-      if (allocated(itet)) deallocate (itet)
-      if (allocated(itettyp)) deallocate (itettyp)
 
 #if DEBUG
       do ielem = 1, grid%num_elems_local
@@ -795,6 +759,11 @@ contains
       VecScatter :: vec_scatter
       IS :: is_scatter, is_gather
       PetscInt :: nd1 ! number_of_dimensions + 1
+
+#if DEBUG
+      PetscViewer :: viewer
+      character(len=150) :: filename
+#endif
 
       nd1 = grid%ndim + 1
 
@@ -1024,6 +993,9 @@ contains
       PetscReal :: cell_area(3), cell_vol(3), cell_len(3)
       PetscErrorCode :: ierr
 
+#if DEBUG
+      PetscViewer :: viewer
+#endif
       temp = 0
 
       do i = 1, grid%num_elems_local
@@ -1120,7 +1092,9 @@ contains
       PetscInt, dimension(:), allocatable :: temp
       PetscReal, dimension(:), allocatable :: v1, v2, v3
       PetscErrorCode :: ierr
-
+#if DEBUG
+      PetscViewer :: viewer
+#endif
       PetscReal :: cell_area(6), cell_vol(4), cell_len(6)
 
       allocate (v1(3), v2(3), v3(3))
@@ -1773,7 +1747,9 @@ contains
       PetscErrorCode :: ierr
       PetscScalar :: temp
       PetscReal :: max_degree
-
+#if DEBUG
+      PetscViewer :: viewer
+#endif
       call VecCreateMPI(PETSC_COMM_WORLD, grid%num_pts_local, grid%num_pts_global, grid%degree, ierr); CHKERRQ(ierr)
       call VecSet(grid%degree, azero, ierr); CHKERRQ(ierr)
       call VecMax(grid%connections, PETSC_NULL_INTEGER, max_degree, ierr); CHKERRQ(ierr)
