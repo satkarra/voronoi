@@ -19,7 +19,6 @@ module Grid_module
              CalculateGeometricCoeff, &
              CalculateGeometricCoeff3D, &
              CreateEdgeMatrix, &
-             GridWriteFEHM, &
              GridWriteTOUGH2, &
              GridWriteHDF5, &
              GridWritePFLOTRAN, &
@@ -415,9 +414,8 @@ contains
 
       type(grid_type) :: grid
       character(len=3) :: tcell
-      character(len=MAXSTRINGLENGTH) :: cmo
       character(len=5) :: tmp_str
-      PetscInt :: fileid, ivertex, iatt, irank, remainder
+      PetscInt :: fileid, ivertex, iatt, irank, remainder, root
       PetscInt :: temp_int1, temp_int2, temp_int3, num_to_read, num_to_read_save, ielem
       PetscInt :: data(5)
       PetscInt :: ifrac
@@ -435,7 +433,6 @@ contains
       PetscInt :: length
       PetscInt :: dim_skip
       PetscInt :: ierror, ilen, itype
-      integer*8 :: nsdtopo_8, nsdgeom_8, npoints_8, ntets_8 ! For getting LaGrit 64-bit integer data
       PetscInt :: nsdtopo, nsdgeom, npoints, ntets
 
       pointer(ixic, xic)
@@ -452,66 +449,16 @@ contains
 
       if (rank == io_rank) then
 
-         ! Check if LaGriT infile was passed
-         if (grid%lg_flag .eqv. PETSC_TRUE) then
+         length = len(trim(grid%avs_str))
+         grid%ndim = ParseDimension(grid%avs_str, length)
 
-            if (grid%avs_flag .eqv. PETSC_TRUE) then
-               print *, '\nWARNING: Both AVS and LaGriT infiles passed to Voronoi.'
-               print *, '         Defaulting to LaGriT.\n'
-            endif
+         fileid = 86
+         open (fileid, file=trim(grid%avs_str))
+         read (fileid, *) data
 
-            call initlagrit('silent', ' ', ' ')
-            !call dotask('read/avs/' // trim(grid%avs_str) // /mo1'; finish',ierror)
-            call dotask('infile '//trim(grid%lg_str)//'; finish', ierror)
-
-            call cmo_get_name(cmo, ierror)
-            call cmo_get_info('ndimensions_topo', cmo, nsdtopo_8, ilen, itype, ierror)
-            call cmo_get_info('ndimensions_geom', cmo, nsdgeom_8, ilen, itype, ierror)
-            call cmo_get_info('nnodes', cmo, npoints_8, ilen, itype, ierror)
-            call cmo_get_info('xic', cmo, ixic, ilen, itype, ierror)
-            call cmo_get_info('yic', cmo, iyic, ilen, itype, ierror)
-            call cmo_get_info('zic', cmo, izic, ilen, itype, ierror)
-            call cmo_get_info('nelements', cmo, ntets_8, ilen, itype, ierror)
-            call cmo_get_info('itet', cmo, ipitet, ilen, itype, ierror)
-            call cmo_get_info('itettyp', cmo, ipitettyp, ilen, itype, ierror)
-            call cmo_get_info('imt1', cmo, ipimt1, ilen, itype, ierr)
-
-            ! Re-cast LaGrit integer*8 to PetscInt
-            nsdtopo = nsdtopo_8
-            nsdgeom = nsdgeom_8
-            npoints = npoints_8
-            ntets = ntets_8
-
-            ! TODO: Dimension should be a parsing of itettyp
-            grid%ndim = nsdtopo
-
-            allocate (itet(ntets*(grid%ndim + 1)))
-            allocate (itettyp(ntets*(grid%ndim + 1)))
-            allocate (imt1(npoints))
-
-            ! Re-cast integer*8 to PestcInt
-            itet(1:ntets*(grid%ndim + 1)) = itet_8(1:ntets*(grid%ndim + 1))
-            itettyp(1:ntets) = itettyp_8(1:ntets)
-            imt1(1:npoints) = imt1_8(1:npoints)
-
-            temp_int1 = npoints
-            temp_int2 = ntets
-
-#if DEBUG
-            call dotask('mmprint; finish', ierror) ! LG memory info
-#endif
-         else
-            length = len(trim(grid%avs_str))
-            grid%ndim = ParseDimension(grid%avs_str, length)
-
-            fileid = 86
-            open (fileid, file=trim(grid%avs_str))
-            read (fileid, *) data
-
-            temp_int1 = data(1) ! read point count
-            temp_int2 = data(2) ! read simplex count
-            temp_int3 = data(3) ! read node attribute count
-         endif
+         temp_int1 = data(1) ! read point count
+         temp_int2 = data(2) ! read simplex count
+         temp_int3 = data(3) ! read node attribute count
 
 #if DEBUG
          print *, 'Rank:', rank
@@ -740,9 +687,8 @@ contains
 
       allocate (temp_int(grid%num_elems_local*dim_skip))
       call MPI_Scatterv(temp_int_array, sendcounts, pos, MPI_INT, &
-                        temp_int, sendcounts, MPI_INT, 0, &
+                        temp_int, size, MPI_INT, root, &
                         MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
       if (rank == io_rank) deallocate (temp_int_array)
 
       ! Assign simplex # to elem_ids; simplex nodes to elem_connectivity
@@ -1008,35 +954,35 @@ contains
 
       call MatCreateAIJ(PETSC_COMM_WORLD, grid%num_pts_local, grid%num_pts_local, &
                         PETSC_DETERMINE, PETSC_DETERMINE, &
-                        PETSC_NULL_INTEGER, d_nnz, &
-                        PETSC_NULL_INTEGER, o_nnz, grid%adjmatrix, ierr); CHKERRQ(ierr)
+                        PETSC_DECIDE, d_nnz, &
+                        PETSC_DECIDE, o_nnz, grid%adjmatrix, ierr); CHKERRQ(ierr)
       call MatCreateAIJ(PETSC_COMM_WORLD, grid%num_pts_local, grid%num_pts_local, &
                         PETSC_DETERMINE, PETSC_DETERMINE, &
-                        PETSC_NULL_INTEGER, d_nnz2, &
-                        PETSC_NULL_INTEGER, o_nnz2, grid%edgematrix, ierr); CHKERRQ(ierr)
+                        PETSC_DECIDE, d_nnz2, &
+                        PETSC_DECIDE, o_nnz2, grid%edgematrix, ierr); CHKERRQ(ierr)
       call MatCreateAIJ(PETSC_COMM_WORLD, grid%num_pts_local, grid%num_pts_local, &
                         PETSC_DETERMINE, PETSC_DETERMINE, &
-                        PETSC_NULL_INTEGER, d_nnz2, &
-                        PETSC_NULL_INTEGER, o_nnz2, grid%adjmatrix_full, ierr); CHKERRQ(ierr)
+                        PETSC_DECIDE, d_nnz2, &
+                        PETSC_DECIDE, o_nnz2, grid%adjmatrix_full, ierr); CHKERRQ(ierr)
       call MatCreateAIJ(PETSC_COMM_WORLD, grid%num_pts_local, grid%num_pts_local, &
                         PETSC_DETERMINE, PETSC_DETERMINE, &
-                        PETSC_NULL_INTEGER, d_nnz2, &
-                        PETSC_NULL_INTEGER, o_nnz2, grid%connectivity, ierr); CHKERRQ(ierr)
+                        PETSC_DECIDE, d_nnz2, &
+                        PETSC_DECIDE, o_nnz2, grid%connectivity, ierr); CHKERRQ(ierr)
       call MatCreateAIJ(PETSC_COMM_WORLD, grid%num_pts_local, grid%num_pts_local, &
                         PETSC_DETERMINE, PETSC_DETERMINE, &
-                        PETSC_NULL_INTEGER, d_nnz2, &
-                        PETSC_NULL_INTEGER, o_nnz2, grid%connect_area, ierr); CHKERRQ(ierr)
+                        PETSC_DECIDE, d_nnz2, &
+                        PETSC_DECIDE, o_nnz2, grid%connect_area, ierr); CHKERRQ(ierr)
 
       ! TOUGH2
       !if ((grid%is_tough .EQV. PETSC_TRUE) .OR. (atts%are_on)) then
       call MatCreateAIJ(PETSC_COMM_WORLD, grid%num_pts_local, grid%num_pts_local, &
                         PETSC_DETERMINE, PETSC_DETERMINE, &
-                        PETSC_NULL_INTEGER, d_nnz, &
-                        PETSC_NULL_INTEGER, o_nnz, grid%adjmatrix_area, ierr); CHKERRQ(ierr)
+                        PETSC_DECIDE, d_nnz, &
+                        PETSC_DECIDE, o_nnz, grid%adjmatrix_area, ierr); CHKERRQ(ierr)
       call MatCreateAIJ(PETSC_COMM_WORLD, grid%num_pts_local, grid%num_pts_local, &
                         PETSC_DETERMINE, PETSC_DETERMINE, &
-                        PETSC_NULL_INTEGER, d_nnz, &
-                        PETSC_NULL_INTEGER, o_nnz, grid%adjmatrix_len, ierr); CHKERRQ(ierr)
+                        PETSC_DECIDE, d_nnz, &
+                        PETSC_DECIDE, o_nnz, grid%adjmatrix_len, ierr); CHKERRQ(ierr)
 
       ! TODO: FIX!!!
       call MatSetOption(grid%adjmatrix_area, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE, ierr); CHKERRQ(ierr)
@@ -1896,7 +1842,7 @@ contains
          call MatSetValues(grid%adjmatrix_full, ncols - 1, cols(2:ncols), one, &
                            grid%vertex_ids(i) - 1, temp_vals(2:ncols), INSERT_VALUES, ierr); CHKERRQ(ierr)
          call MatSetValue(grid%adjmatrix_full, grid%vertex_ids(i) - 1, &
-                          grid%vertex_ids(i) - 1, zero, INSERT_VALUES, ierr); CHKERRQ(ierr)
+                          grid%vertex_ids(i) - 1, azero, INSERT_VALUES, ierr); CHKERRQ(ierr)
 
          ! TOUGH2
          if (grid%is_tough .EQV. PETSC_TRUE) then
@@ -1984,367 +1930,6 @@ contains
 
    end subroutine CreateEdgeMatrix
 
-!**************************************************************************
-   subroutine GridWriteFEHM(grid, atts, rank, size)
-      !
-      ! Dumps all the information into FEHM .stor file
-      !
-      ! Author: Zhuolin Qu, LANL
-      ! Date: 07/26/2015
-      !
-
-      ! row_count -> 'Count for Each Row' (S4 in STOR file descriptor)
-      !   Deprecates `degree_local`.
-
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscmat.h"
-
-      use petscvec
-      use petscmat
-      implicit none
-
-      type(grid_type) :: grid
-      type(diag_atts) :: atts
-      character(len=30) :: fdate
-      PetscInt :: fileid, i, rank, irank, size
-      PetscInt :: rec_tot, rec_local, NEQ, coeff_count
-      PetscInt :: io_rank = 0, num_area_coef = 1
-      PetscInt :: temp_int, pos1, ncon_max, ncon_max_local, mask_delta, mask_delta_local
-      PetscReal :: degree_tot_max
-      PetscReal, pointer :: vec_ptr(:), vec_ptr1(:)
-      PetscInt, allocatable :: sendcounts_pts(:), pos_pts(:), tmp_map(:)
-      PetscInt, allocatable :: sendcounts_edge(:), pos_edge(:)
-      PetscReal, allocatable :: vol_local(:), geom_coeffs(:), voronoi_volumes(:)
-      PetscScalar, allocatable :: edge_temp(:)
-      PetscReal, allocatable :: edge_local(:)
-      PetscReal, allocatable :: adj_temp(:), adj_local(:)
-      PetscInt, allocatable :: degree_1(:), degree_2(:), degree_local(:), degree_local2(:)
-      PetscReal, allocatable :: data_local_real(:), data_global_real(:)
-      PetscInt, allocatable :: num_pts_0(:), rec_local_0(:)
-      PetscInt, allocatable :: indx(:), indx_save(:), coeff_pointers(:)
-      PetscInt, allocatable :: sendcounts(:), pos(:), off_diagonal_map(:), on_diagonal_map(:)
-      PetscInt, allocatable :: row_count(:), row_entries(:), pointer_stride(:)
-      PetscBool, allocatable :: nil_mask(:), full_mask(:)
-      PetscInt :: ncols
-      Vec :: mat_diag
-      PetscErrorCode :: ierr
-
-      NEQ = grid%num_pts_local
-
-      call VecMax(grid%degree_tot, PETSC_NULL_INTEGER, degree_tot_max, ierr); CHKERRQ(ierr)
-
-      ! get the vol_local
-      allocate (vol_local(grid%num_pts_local))
-      call VecCreate(PETSC_COMM_WORLD, mat_diag, ierr); CHKERRQ(ierr)
-      call VecSetSizes(mat_diag, grid%num_pts_local, grid%num_pts_global, ierr); CHKERRQ(ierr)
-      call VecSetType(mat_diag, VECMPI, ierr); CHKERRQ(ierr)
-      call MatGetDiagonal(grid%adjmatrix, mat_diag, ierr); CHKERRQ(ierr)
-      call MatDestroy(grid%adjmatrix, ierr); CHKERRQ(ierr)
-      call VecGetArrayReadF90(mat_diag, vec_ptr, ierr); CHKERRQ(ierr)
-      vol_local = vec_ptr
-      call VecRestoreArrayReadF90(mat_diag, vec_ptr, ierr); CHKERRQ(ierr)
-      call VecDestroy(mat_diag, ierr); CHKERRQ(ierr)
-
-      ! get the edge_local & adj_local
-      call VecGetArrayReadF90(grid%degree_tot, vec_ptr, ierr); CHKERRQ(ierr)
-      rec_local = int(sum(vec_ptr))
-      allocate (edge_local(rec_local))
-      allocate (adj_local(rec_local))
-      allocate (full_mask(rec_local))
-
-      pos1 = 0
-      temp_int = int(maxval(vec_ptr))
-      allocate (edge_temp(temp_int))
-      allocate (adj_temp(temp_int))
-      allocate (nil_mask(temp_int)) ! mask
-
-      allocate (row_count(NEQ + 1))
-
-      ! -------------------------------------------------------------
-      ! CAPTURE CONNECTIVITY && AREA COEFFICIENTS
-      !
-      ! Iterate over each row in the sparse matrix
-      ! Here, we will pull connectivity (i.e. where entries exist), and
-      ! the corresponding off-diagonal coefficients
-
-      ncon_max_local = 0
-      mask_delta = 0
-      mask_delta_local = 0
-
-      do i = 1, grid%num_pts_local
-         temp_int = int(vec_ptr(i))
-
-         ! Capture connectivity
-         call MatGetRow(grid%edgematrix, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, edge_temp, ierr); CHKERRQ(ierr)
-         edge_local(pos1 + 1:pos1 + temp_int) = int(edge_temp(1:temp_int))
-         call MatRestoreRow(grid%edgematrix, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, edge_temp, ierr); CHKERRQ(ierr)
-
-         ! Capture coefficients
-         call MatGetRow(grid%adjmatrix_full, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, adj_temp, ierr); CHKERRQ(ierr)
-         adj_local(pos1 + 1:pos1 + temp_int) = adj_temp(1:temp_int)
-         call MatRestoreRow(grid%adjmatrix_full, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, adj_temp, ierr); CHKERRQ(ierr)
-
-         ! Store number of connections
-         row_count(i + 1) = temp_int
-
-         ! Generate a mask for 'removing' entries below a threshold.
-         ! Namely, (i) all non-zeros should be preserved, EXCEPT FOR
-         ! (ii) non-zeros on the diagonal (i.e. Voronoi volumes)
-         if (atts%coefficients_are_dedudded .eqv. PETSC_TRUE) then
-            nil_mask = PETSC_TRUE
-            where (abs(adj_temp(1:temp_int)) < 1e-6) nil_mask(1:temp_int) = PETSC_FALSE
-            where (int(edge_temp(1:temp_int)) == grid%vertex_ids(i)) nil_mask(1:temp_int) = PETSC_TRUE
-
-            ! Fill full masking vector with captured subset
-            full_mask(pos1 + 1:pos1 + temp_int) = nil_mask(1:temp_int)
-            ncon_max_local = max(ncon_max_local, count(nil_mask(1:temp_int)))
-
-            !row_count(i+1) = count(nil_mask(1:temp_int))
-            vec_ptr(i) = count(nil_mask(1:temp_int))
-            mask_delta_local = mask_delta_local + (temp_int - count(nil_mask(1:temp_int)))
-         endif
-
-         pos1 = pos1 + temp_int
-      enddo
-
-      call MPI_Reduce(rec_local, rec_tot, 1, MPI_INT, MPI_SUM, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Reduce(mask_delta_local, mask_delta, 1, MPI_INT, MPI_SUM, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Reduce(ncon_max_local, ncon_max, 1, MPI_INT, MPI_MAX, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      ! Below is probably not necessary as only io_rank needs access to rec_tot
-      call MPI_Bcast(rec_tot, ONE_INTEGER_MPI, MPI_INTEGER, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Bcast(ncon_max, ONE_INTEGER_MPI, MPI_INTEGER, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Bcast(mask_delta, ONE_INTEGER_MPI, MPI_INTEGER, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         allocate (sendcounts_pts(size))
-         allocate (sendcounts_edge(size))
-      endif
-
-      call MPI_Gather(grid%num_pts_local, 1, MPI_INT, sendcounts_pts, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Gather(rec_local, 1, MPI_INT, sendcounts_edge, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         allocate (pos_pts(size))
-         allocate (pos_edge(size))
-         pos_pts(1) = 0
-         do irank = 1, size - 1
-            pos_pts(irank + 1) = pos_pts(irank) + sendcounts_pts(irank)
-         enddo
-         pos_edge(1) = 0
-         do irank = 1, size - 1
-            pos_edge(irank + 1) = pos_edge(irank) + sendcounts_edge(irank)
-         enddo
-         if (atts%coefficients_are_dedudded .eqv. PETSC_FALSE) rec_tot = pos_edge(size) + sendcounts_edge(size) !!!!!!!!!!
-
-         ! Update NCOEF based on mask
-         !if (atts%coefficients_are_dedudded .eqv. PETSC_TRUE) rec_tot = 33!count(full_mask)
-         !if (atts%coefficients_are_dedudded .eqv. PETSC_TRUE) rec_local = count(full_mask) !!! WARNING: IS NOT TRUE FOR PARALLEL!!!
-         !if (atts%coefficients_are_dedudded .eqv. PETSC_TRUE) degree_tot_max = ncon_max
-      endif
-
-      if (atts%coefficients_are_dedudded .eqv. PETSC_TRUE) rec_local = count(full_mask)
-      if (atts%coefficients_are_dedudded .eqv. PETSC_TRUE) degree_tot_max = ncon_max
-
-      ! calculate degree_local
-      allocate (degree_local(grid%num_pts_local))
-      call MPI_Scatter(pos_edge, 1, MPI_INT, degree_local(1), 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      ! Calculate and populate the `Count for Each Row` vector
-      row_count(1) = NEQ + 1
-      do i = 2, grid%num_pts_local
-         degree_local(i) = degree_local(i - 1) + int(vec_ptr(i - 1))
-         row_count(i) = row_count(i) + row_count(i - 1)
-      enddo
-
-      degree_local = degree_local + 1 + grid%num_pts_global
-
-      ! calculate degree_local2 = degree_diff_local+degree_local+1
-      allocate (degree_1(grid%num_pts_local))
-      allocate (degree_2(grid%num_pts_local))
-      allocate (degree_local2(grid%num_pts_local))
-      degree_1 = int(vec_ptr)
-      call VecGetArrayReadF90(grid%degree, vec_ptr1, ierr); CHKERRQ(ierr)
-      degree_2 = int(vec_ptr1)
-      call VecRestoreArrayReadF90(grid%degree, vec_ptr1, ierr); CHKERRQ(ierr)
-      degree_local2 = degree_local + degree_1 - degree_2 + 1
-      deallocate (degree_1)
-      deallocate (degree_2)
-
-      call VecRestoreArrayReadF90(grid%degree_tot, vec_ptr, ierr); CHKERRQ(ierr)
-
-#if DEBUG
-      print *, rank, 'vol_local=', vol_local
-      print *, rank, 'degree_local', degree_local
-      print *, rank, 'edge_lcoal=', edge_local
-      print *, rank, 'adj_local=', adj_local
-      print *, rank, 'degree_local2=', degree_local2
-#endif
-
-      allocate (data_local_real(grid%num_pts_local*3 + rec_local*2 + 2))
-      data_local_real(1:grid%num_pts_local) = vol_local
-      data_local_real(grid%num_pts_local + 1:grid%num_pts_local*2) = degree_local
-      data_local_real(grid%num_pts_local*2 + rec_local + 1:grid%num_pts_local*3 + rec_local) = degree_local2
-      data_local_real(grid%num_pts_local*3 + rec_local*2 + 1) = grid%num_pts_local
-      data_local_real(grid%num_pts_local*3 + rec_local*2 + 2) = rec_local
-
-      ! Apply mask if compression
-      if (atts%coefficients_are_dedudded .eqv. PETSC_TRUE) then
-         data_local_real(grid%num_pts_local*3 + rec_local + 1:grid%num_pts_local*3 + rec_local*2) = pack(adj_local, full_mask)
-         data_local_real(grid%num_pts_local*2 + 1:grid%num_pts_local*2 + rec_local) = pack(edge_local, full_mask)
-      else
-         data_local_real(grid%num_pts_local*3 + rec_local + 1:grid%num_pts_local*3 + rec_local*2) = adj_local
-         data_local_real(grid%num_pts_local*2 + 1:grid%num_pts_local*2 + rec_local) = edge_local
-      endif
-
-      ! deallocate(degree_diff_local)
-      deallocate (vol_local)
-      deallocate (degree_local)
-      deallocate (edge_local)
-      deallocate (degree_local2)
-      deallocate (adj_local)
-
-      call MPI_Reduce(rec_local, rec_tot, 1, MPI_INT, MPI_SUM, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      ! prepare for gathering the data
-      if (rank == io_rank) then
-         allocate (sendcounts(size))
-         allocate (pos(size))
-
-         sendcounts = sendcounts_pts*3 + sendcounts_edge*2 + 2
-         pos = pos_pts*3 + pos_edge*2 + (/(2*(i - 1), i=1, size)/)
-
-         allocate (data_global_real(grid%num_pts_global*3 + rec_tot*2 + 2*size))
-         deallocate (sendcounts_pts)
-         deallocate (pos_pts)
-         deallocate (sendcounts_edge)
-         deallocate (pos_edge)
-      endif
-
-      if (atts%coefficients_are_dedudded .eqv. PETSC_TRUE) then
-         call MPI_Gather((grid%num_pts_local*3 + rec_local*2 + 2), 1, MPI_INT, &
-                         sendcounts, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-         if (rank == io_rank) then
-            pos = 0
-            if (size > 1) pos(2:size) = (/(sum(sendcounts(1:i)), i=1, size)/)
-         endif
-      endif
-
-      ! gather the data to io_rank
-      call MPI_Gatherv(data_local_real, grid%num_pts_local*3 + rec_local*2 + 2, &
-                       MPI_DOUBLE_PRECISION, data_global_real, sendcounts, &
-                       pos, MPI_DOUBLE_PRECISION, io_rank, &
-                       MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      ! print to file
-      if (rank == io_rank) then
-
-         fileid = 49
-         allocate (num_pts_0(size))
-         allocate (rec_local_0(size))
-         allocate (indx(size))
-         allocate (voronoi_volumes(grid%num_pts_global))
-         allocate (pointer_stride(size))
-         allocate (row_entries(size))
-         allocate (geom_coeffs(rec_tot))
-         allocate (coeff_pointers(rec_tot))
-         allocate (off_diagonal_map(rec_tot))
-         allocate (on_diagonal_map(size))
-
-55       format(5(1PE20.12))
-56       format(5i15)
-
-         ! -------------------------------------------------------------
-         ! Break data_global_real into discrete arrays
-         ! This is for later manipulation, but also benefits readability
-         ! This needs to be significantly refactored. Ugh.
-
-         indx = (/pos(2:size) - 1, pos(size) + sendcounts(size) - 1/)
-         indx = indx - 2*mask_delta
-         num_pts_0 = int(data_global_real(indx))
-         rec_local_0 = int(data_global_real(indx + 1))
-
-         indx = pos + 1
-         voronoi_volumes = (/(data_global_real(indx(i):indx(i) - 1 + num_pts_0(i)), i=1, size)/) ! <- what?
-
-         allocate (indx_save(size))
-         indx = indx + num_pts_0
-         indx_save = indx + num_pts_0
-         pointer_stride = (/(int(data_global_real(indx(i):indx(i) - 1 + num_pts_0(i))), i=1, size)/)
-         row_entries = (/(int(data_global_real(indx_save(i):indx_save(i) - 1 + rec_local_0(i))), i=1, size)/)
-         indx = indx_save
-         deallocate (indx_save)
-
-         indx = indx + rec_local_0
-         off_diagonal_map = (/(i, i=1, rec_tot)/)
-         on_diagonal_map = (/(int(data_global_real(indx(i):indx(i) - 1 + num_pts_0(i))), i=1, size)/)
-         indx = indx + num_pts_0
-         geom_coeffs = (/(-(data_global_real(indx(i):indx(i) - 1 + rec_local_0(i))), i=1, size)/)
-
-         ! --------------------------------------------------------------------------------
-
-         ! Open outfile for writing
-         if (grid%dump_flag .EQV. PETSC_TRUE) then
-            open (fileid, file=trim(grid%dump_str))
-         else
-            open (fileid, file='voronoi.stor')
-         endif
-
-         ! -------------------------------------------------------------
-         ! Write out the header
-         write (fileid, '(a)') 'fehmstor ascir8i4 Sparse Matrix Voronoi Coefficients'
-         write (fileid, *) fdate()
-         write (fileid, 56) rec_tot, grid%num_pts_global, rec_tot + grid%num_pts_global + 1, num_area_coef, int(degree_tot_max)
-
-         ! -------------------------------------------------------------
-         ! Write out the Voronoi volumes
-         write (fileid, 55) voronoi_volumes
-
-         ! -------------------------------------------------------------
-         ! Write out the count for each row, row entries
-
-         write (fileid, 56) pointer_stride, rec_tot + 1 + grid%num_pts_global, row_entries
-
-         ! -------------------------------------------------------------
-         ! Write out the 'pointers' and N_vertices zeros
-
-         allocate (tmp_map(rec_tot))
-
-         ! rec tot may not be stable under epsilon removal
-         if (atts%coefficients_are_compressed .eqv. PETSC_FALSE) then
-            off_diagonal_map = (/(i, i=1, rec_tot)/)
-            coeff_count = rec_tot
-         else
-            call CompressCoefficients(geom_coeffs, tmp_map, off_diagonal_map, rec_tot, coeff_count)
-         endif
-
-         write (fileid, 56) off_diagonal_map, (0, i=1, grid%num_pts_global + 1)
-
-         ! -------------------------------------------------------------
-         ! Write out the pointers indicating which represent volumes
-         write (fileid, 56) on_diagonal_map
-
-         ! -------------------------------------------------------------
-         ! Write out the geometric coefficients
-
-         if (atts%coefficients_are_compressed .eqv. PETSC_FALSE) then
-            write (fileid, 55) geom_coeffs
-         else
-            write (fileid, 55) (geom_coeffs(tmp_map(i)), i=1, coeff_count)
-         endif
-
-         deallocate (indx)
-         deallocate (data_global_real)
-         deallocate (tmp_map)
-         deallocate (pointer_stride)
-         deallocate (voronoi_volumes)
-         deallocate (row_entries)
-
-         close (fileid)
-      endif
-
-   end subroutine GridWriteFEHM
 
 !**************************************************************************
 
@@ -3188,74 +2773,6 @@ contains
 
    end subroutine GridWriteTOUGH2
 
-   subroutine CompressCoefficients(values, map, indx, N, max_index)
-      !
-      ! Subroutine for compressing FEHM STOR file
-      ! geometric coefficients
-      !
-      ! Usage:
-      !
-      !  values(indx1(i))
-      !
-      ! Parameters:
-      !
-      !    values (Nx1 array) - contains geometric coeff. values
-      !    N (integer) - size of values
-      !    indx1 (Nx1 array) (output) - remapped pointers to coeff. indices
-      !
-
-      implicit none
-
-      PetscInt  :: N, max_index, indx(N), map(N)
-      PetscReal :: values(N)
-      real*8 :: x0, x1, epsilon = 0.00001, ascend = -1.0
-      real*8, allocatable :: values_8(:)
-      integer*8, allocatable :: map_8(:), indx_8(:)
-      integer*8 :: N_8, i, j
-
-      allocate (map_8(N))
-      allocate (values_8(N))
-      allocate (indx_8(N))
-
-      map_8 = (/(i, i=1, N)/)
-      indx_8 = 0
-      j = 1
-
-      ! Type promotion must be done to accomodate the <T>*8 LaGriT uses
-      N_8 = N
-      values_8 = values
-
-      ! Call a sorting function on the geometric coefficients - uses `map` as a key
-      ! hpsort1 : in namespace `LaGriT::lg_util`
-      call hpsort1(N_8, values_8, ascend, map_8)
-
-      ! Iterate over the sorted vector, capturing 'unique' values.
-      ! Unique values are defined as elements in the sorted vector
-      ! that have a .gt. `epsilon` difference than the previous vector element.
-      ! `j` is the iterator counting the unique values.
-      x0 = values_8(map_8(1))
-      do i = 1, N_8
-         x1 = values_8(map_8(i))
-         if (abs(x1 - x0) > epsilon) then
-            j = j + 1
-            values_8(map_8(j)) = x1
-         endif
-         indx_8(map_8(i)) = j
-         x0 = x1
-      enddo
-
-      ! Promote <T>*8 variables back to PETSc precision
-      max_index = j
-      values = values_8
-      indx = indx_8
-      map = map_8
-
-      deallocate (map_8)
-      deallocate (values_8)
-      deallocate (indx_8)
-
-   end subroutine CompressCoefficients
-
 !**************************************************************************
 
    character(len=5) function Material(countmat)
@@ -3721,7 +3238,7 @@ contains
 
             call ISCreateGeneral(PETSC_COMM_SELF, 1, (/a1 - 1/), PETSC_COPY_VALUES, irow1, ierr); CHKERRQ(ierr)
             call ISCreateGeneral(PETSC_COMM_SELF, 1, (/b1 - 1/), PETSC_COPY_VALUES, icol1, ierr); CHKERRQ(ierr)
-            call MatGetSubMatrices(grid%conn1, 1, irow1, icol1, MAT_INITIAL_MATRIX, submat1, ierr); CHKERRQ(ierr)
+            call MatCreateSubMatrices(grid%conn1, 1, irow1, icol1, MAT_INITIAL_MATRIX, submat1, ierr); CHKERRQ(ierr)
             call MatGetValues(submat1, 1, (/0/), 1, (/0/), v1, ierr); CHKERRQ(ierr)
             call ISDestroy(irow1, ierr); CHKERRQ(ierr)
             call ISDestroy(icol1, ierr); CHKERRQ(ierr)
@@ -3737,7 +3254,7 @@ contains
 
             call ISCreateGeneral(PETSC_COMM_SELF, 1, (/a2 - 1/), PETSC_COPY_VALUES, irow2, ierr); CHKERRQ(ierr)
             call ISCreateGeneral(PETSC_COMM_SELF, 1, (/b2 - 1/), PETSC_COPY_VALUES, icol2, ierr); CHKERRQ(ierr)
-            call MatGetSubMatrices(grid%conn1, 1, irow2, icol2, MAT_INITIAL_MATRIX, submat2, ierr); CHKERRQ(ierr)
+            call MatCreateSubMatrices(grid%conn1, 1, irow2, icol2, MAT_INITIAL_MATRIX, submat2, ierr); CHKERRQ(ierr)
             call MatGetValues(submat2, 1, (/0/), 1, (/0/), v2, ierr); CHKERRQ(ierr)
 
             if (int(v2(1)) == 0) then
@@ -3753,7 +3270,7 @@ contains
 
             call ISCreateGeneral(PETSC_COMM_SELF, 1, (/a3 - 1/), PETSC_COPY_VALUES, irow3, ierr); CHKERRQ(ierr)
             call ISCreateGeneral(PETSC_COMM_SELF, 1, (/b3 - 1/), PETSC_COPY_VALUES, icol3, ierr); CHKERRQ(ierr)
-            call MatGetSubMatrices(grid%conn1, 1, irow3, icol3, MAT_INITIAL_MATRIX, submat3, ierr); CHKERRQ(ierr)
+            call MatCreateSubMatrices(grid%conn1, 1, irow3, icol3, MAT_INITIAL_MATRIX, submat3, ierr); CHKERRQ(ierr)
             call MatGetValues(submat3, 1, (/0/), 1, (/0/), v3, ierr); CHKERRQ(ierr)
 
             if (int(v3(1)) == 0) then
@@ -3771,9 +3288,9 @@ contains
 
             call ISCreateGeneral(PETSC_COMM_SELF, 0, (/1/), PETSC_COPY_VALUES, irow1, ierr); CHKERRQ(ierr)
             call ISCreateGeneral(PETSC_COMM_SELF, 0, (/1/), PETSC_COPY_VALUES, icol1, ierr); CHKERRQ(ierr)
-            call MatGetSubMatrices(grid%conn1, 1, irow1, icol1, MAT_INITIAL_MATRIX, submat1, ierr); CHKERRQ(ierr)
-            call MatGetSubMatrices(grid%conn1, 1, irow1, icol1, MAT_INITIAL_MATRIX, submat2, ierr); CHKERRQ(ierr)
-            call MatGetSubMatrices(grid%conn1, 1, irow1, icol1, MAT_INITIAL_MATRIX, submat3, ierr); CHKERRQ(ierr)
+            call MatCreateSubMatrices(grid%conn1, 1, irow1, icol1, MAT_INITIAL_MATRIX, submat1, ierr); CHKERRQ(ierr)
+            call MatCreateSubMatrices(grid%conn1, 1, irow1, icol1, MAT_INITIAL_MATRIX, submat2, ierr); CHKERRQ(ierr)
+            call MatCreateSubMatrices(grid%conn1, 1, irow1, icol1, MAT_INITIAL_MATRIX, submat3, ierr); CHKERRQ(ierr)
             call ISDestroy(irow1, ierr); CHKERRQ(ierr)
             call ISDestroy(icol1, ierr); CHKERRQ(ierr)
 

@@ -220,7 +220,7 @@ program voronoi
 
    ! Determine what the desired output format is, then write to it
    if (out_type == 1) then
-      call GridWriteFEHM(grid, atts, rank, size)
+      ! call GridWriteFEHM(grid, atts, rank, size)
       !call TEMPGridWriteFEHM(grid,atts,rank,size)
    elseif (out_type == 2) then
       call GridWriteTOUGH2(grid, rank, size, 5)
