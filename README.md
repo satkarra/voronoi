@@ -4,17 +4,14 @@
 
 VORONOI is a parallel, scalable control volume tessellation generator, built for use in subsurface flow and transport solvers.
 
+This fork is without integration with LaGriT and primarily for PFLOTRAN.
+
 The program accepts a Delaunay mesh composed of one of four element types: triangles, tetrahedrals, quads, or hexes.
 
 It then finds the Voronoi dual or median of that mesh, and writes it in a solver-specific format:
 
-1. FEHM (`.stor`)
-2. PFLOTRAN (`.uge`)
-3. TOUGH (`MESH`)
-4. HDF5 (for general use; `.h5`)
-
-VORONOI works as a standalone MPI application or as a serial command in the
-[LaGriT mesh generator](lagrit.lanl.gov).
+1. PFLOTRAN (`.uge`)
+2. HDF5 (for general use; `.h5`)
 
 ### Features ###
 
