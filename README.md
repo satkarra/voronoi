@@ -16,14 +16,11 @@ It then finds the Voronoi dual or median of that mesh, and writes it in a solver
 ### Features ###
 
 * Accurate calculation of Voronoi/Median cell volume and cell face area in 2D and 3D
-* Reads AVS and LaGriT input files (LGI)
-* Outputs to FEHM, PFLOTRAN, TOUGH, and HDF5
+* Reads AVS input files
+* Outputs to PFLOTRAN and HDF5
 * Outputs visualization of control volume cells
-* Assigns ROCK coefficients based on node attributes (TOUGH)
-* Automatic element assignment of isotropic / anisotropic permeability coefficients (TOUGH)
-* Removes duplicate and negligable coefficients (FEHM)
 * Built with PETSc for parallel execution and sparse matrix data types
-Cross-platform & open source
+* Cross-platform & open source
 
 ### Building ###
 
@@ -41,7 +38,6 @@ found in the LICENSE.md file of the repository.*
 
 ### Contact ###
 
-For help and support, contact Daniel Livingston (livingston@lanl.gov).
-
+Fork maintained by Satish Karra (karra@pnnl.gov).
 To report a bug or feature request, open an issue on the GitHub Issue Tracker.
 
