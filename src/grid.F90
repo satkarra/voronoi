@@ -19,7 +19,6 @@ module Grid_module
              CalculateGeometricCoeff, &
              CalculateGeometricCoeff3D, &
              CreateEdgeMatrix, &
-             GridWriteTOUGH2, &
              GridWriteHDF5, &
              GridWritePFLOTRAN, &
              CreateConnMatrix, &
@@ -57,15 +56,9 @@ contains
 
          select case (grid%outtype)
          case (1)
-            ftype = '    FEHM STOR file'
-         case (2)
-            ftype = '   TOUGH MESH file'
-         case (3)
             ftype = 'PFLOTRAN grid file'
-         case (4)
+         case (2)
             ftype = '         HDF5 file'
-         case (5)
-            ftype = '  Stanford Polygon'
          case default
             ftype = '   UNKNOWN (ERR 1)'
          end select
@@ -96,17 +89,6 @@ contains
          print 45, 'Output:'//l, trim(grid%dump_str)
          print 45, 'Filetype:'//l, ftype
          print 45, 'Control volume:'//l, cvtype
-
-         if (grid%outtype == 1) then
-            print *, char(10), 'FEHM SETTINGS'
-            print *, repeat(h1, w1)
-            print 49, 'Coefficient compression:'//l, atts%coefficients_are_compressed
-            print 49, 'Coefficient dedudding:'//l, atts%coefficients_are_dedudded
-         else if (grid%outtype == 2) then
-            print *, char(10), 'TOUGH SETTINGS'
-            print *, repeat(h1, w1)
-            print '(a)', 'Materials: nil'
-         endif
 
       endif
 
@@ -617,8 +599,8 @@ contains
       allocate (pos(size))
 
       ! Initialize vectors for PFLOTRAN cell centers and volumes
-      if (grid%outtype == 3) allocate (grid%cell_cc(grid%num_elems_local, 3))
-      if (grid%outtype == 3) allocate (grid%cell_vol(grid%num_elems_local))
+      if (grid%outtype == 1) allocate (grid%cell_cc(grid%num_elems_local, 3))
+      if (grid%outtype == 1) allocate (grid%cell_vol(grid%num_elems_local))
 
       grid%elem_ids = 0
 
@@ -683,47 +665,43 @@ contains
 
       if (rank == io_rank) then
          ! if we're reading an AVS file...
-         if (grid%lg_flag .eqv. PETSC_TRUE) then
-            call getMatFromIMT(imt1, num_pts, grid%imt_values)
-         else
-            ! if there is no zone flag, AND we're in TOUGH2 mode...
-            if ((grid%zone_flag .EQV. PETSC_FALSE) .AND. (grid%is_tough .EQV. PETSC_TRUE)) then
+         ! if there is no zone flag, AND we're in TOUGH2 mode...
+         if ((grid%is_tough .EQV. PETSC_TRUE)) then
 
-               ! if the AVS file actually HAS attributes...
-               if (num_atts .gt. 0) then
-                  allocate (imt_vector(num_pts))
-                  imt_index = 0
+            ! if the AVS file actually HAS attributes...
+            if (num_atts .gt. 0) then
+               allocate (imt_vector(num_pts))
+               imt_index = 0
 
-                  ! figure out which column is imt
-                  do iatt = 1, num_atts + 1
-                     read (fileid, *) tmp_str
-                     if ((tmp_str(1:3) == 'imt') .AND. (imt_index .lt. 1)) then
-                        imt_index = iatt
-                     endif
+               ! figure out which column is imt
+               do iatt = 1, num_atts + 1
+                  read (fileid, *) tmp_str
+                  if ((tmp_str(1:3) == 'imt') .AND. (imt_index .lt. 1)) then
+                     imt_index = iatt
+                  endif
+               enddo
+
+               ! verify that there actually *is* an imt field
+               if (imt_index .gt. 0) then
+                  ! iterate over rows & assign the correct column to imt_vector
+                  do iatt = 1, num_pts
+                     read (fileid, *) tmp_att(1), tmp_att(2), tmp_att(3), tmp_att(4), tmp_att(5)
+                     imt_vector(iatt) = tmp_att(imt_index)
                   enddo
 
-                  ! verify that there actually *is* an imt field
-                  if (imt_index .gt. 0) then
-                     ! iterate over rows & assign the correct column to imt_vector
-                     do iatt = 1, num_pts
-                        read (fileid, *) tmp_att(1), tmp_att(2), tmp_att(3), tmp_att(4), tmp_att(5)
-                        imt_vector(iatt) = tmp_att(imt_index)
-                     enddo
-
-                     ! convert to a materials string
-                     call getMatFromIMT(imt_vector, num_pts, grid%imt_values)
-                  else
-                     grid%imt_values = '    1'
-                  endif
-
-                  deallocate (imt_vector)
-               ! if num_atts <= 0
+                  ! convert to a materials string
+                  call getMatFromIMT(imt_vector, num_pts, grid%imt_values)
                else
                   grid%imt_values = '    1'
                endif
+
+               deallocate (imt_vector)
+            ! if num_atts <= 0
+            else
+               grid%imt_values = '    1'
             endif
-            close (fileid)
          endif
+         close (fileid)
       endif
 
       if (allocated(imt1)) deallocate (imt1)
@@ -1057,7 +1035,7 @@ contains
       call VecDestroy(grid%coordinates_local, ierr); CHKERRQ(ierr)
 
       ! elem%connectivity needs to stay alive for PFLOTRAN dump
-      if (grid%outtype /= 3) deallocate (grid%elem_connectivity)
+      if (grid%outtype /= 1) deallocate (grid%elem_connectivity)
       deallocate (grid%vertex_ids_need)
       deallocate (grid%vertex_ids_map)
 
@@ -1182,7 +1160,7 @@ contains
       call VecDestroy(grid%coordinates_local, ierr); CHKERRQ(ierr)
 
 ! elem%connectivity needs to stay alive for PFLOTRAN dump
-      if (grid%outtype /= 3) deallocate (grid%elem_connectivity)
+      if (grid%outtype /= 1) deallocate (grid%elem_connectivity)
       deallocate (grid%vertex_ids_need)
       deallocate (grid%vertex_ids_map)
 
@@ -1322,8 +1300,8 @@ contains
       cell_len(6) = Norm((/v3(1) - v4(1), v3(2) - v4(2), v3(3) - v4(3)/)) ! | v3 - v4 |
 
       ! Store tetrahedron center
-      if (grid%outtype == 3) grid%cell_cc(ielem, :) = C1234
-      if (grid%outtype == 3) grid%cell_vol(ielem) = Volume(v1, v2, v3, v4)
+      if (grid%outtype == 1) grid%cell_cc(ielem, :) = C1234
+      if (grid%outtype == 1) grid%cell_vol(ielem) = Volume(v1, v2, v3, v4)
 
       ! -- Diagnostics collection -----------------------------
       ! If diagnostics are turned on, start collecting attributes
@@ -1452,7 +1430,7 @@ contains
       endif
 
       ! Calculate the unsigned area of a face
-      if (grid%outtype == 3) then
+      if (grid%outtype == 1) then
          call Cross(tmp, v2 - v1, v3 - v1)
          grid%cell_vol(ielem) = 0.5d0*Norm(tmp)
       endif
@@ -2223,531 +2201,6 @@ contains
       endif
 
    end subroutine GridWriteHDF5
-
-!**************************************************************************
-
-   subroutine GridWriteTOUGH2(grid, rank, size, ELNE_len)
-      !
-      ! Writes out mesh to TOUGH2 file format
-      !
-      ! Authors: Daniel Livingston, Mikey Hannon, Manual Sentis, and Zhuolin Qu
-      ! Date: 04/11/20018
-      !
-
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscmat.h"
-
-      use petscvec
-      use petscmat
-
-      implicit none
-
-      type(grid_type) :: grid
-      PetscInt :: ncols, istart, iend
-      PetscInt :: fileid, fileid_zone, rank, irank, size
-      PetscInt :: rec_tot_tri, rec_local_tri
-      PetscInt :: io_rank = 0
-      PetscInt :: i, j, k, ELNE_len
-      character(len=ELNE_len), allocatable :: ELE(:)
-      character(len=5), allocatable        :: MAT(:)
-      character(len=4)   :: nnum
-      PetscInt :: NN, countmat, isot
-      PetscInt, allocatable :: MM(:), recvcounts(:)
-      PetscReal :: AHTX, temp_real, cosine, distance
-      PetscReal, allocatable :: x(:), y(:), z(:)
-      PetscInt :: temp_int, temp_int2, pos1, pos2, vsize
-      PetscReal, pointer :: vec_ptr(:)
-      PetscInt, allocatable :: sendcounts_pts(:), pos_pts(:)
-      PetscInt, allocatable :: sendcounts_edge(:), pos_edge(:)
-      PetscReal, allocatable :: vol_local(:), vol_global(:)
-      PetscReal, allocatable :: edge_temp(:), edge_local(:)
-      PetscInt, allocatable :: edge_global(:), degree_global(:)
-      PetscReal, allocatable :: adj_temp_len(:), adj_local_len(:), adj_global_len(:)
-      PetscReal, allocatable :: adj_temp_area(:), adj_local_area(:), adj_global_area(:)
-      PetscInt, allocatable :: degree_local(:)
-      PetscReal, allocatable :: data_local_real(:), data_global_real(:)
-      PetscInt, allocatable :: num_pts_0(:), rec_local_tri_0(:)
-      PetscInt, allocatable :: indx(:)
-      PetscInt, allocatable :: sendcounts(:), pos(:)
-      PetscReal, allocatable :: connectivity(:, :), connect_area(:, :), connect_map(:), connect_map_local(:), temp_connections(:)
-      PetscReal, allocatable :: areax_tmp(:), areax_local(:), connectivity_local(:), connectivity_tmp(:)
-      logical :: print_isot_warning = .true.
-      Vec :: mat_diag
-      PetscErrorCode :: ierr
-
-      ! get the vol_local
-      allocate (vol_local(grid%num_pts_local))
-      call VecCreate(PETSC_COMM_WORLD, mat_diag, ierr); CHKERRQ(ierr)
-      call VecSetSizes(mat_diag, grid%num_pts_local, grid%num_pts_global, ierr); CHKERRQ(ierr)
-      call VecSetType(mat_diag, VECMPI, ierr); CHKERRQ(ierr)
-
-      call MatGetDiagonal(grid%adjmatrix_area, mat_diag, ierr); CHKERRQ(ierr)
-      call VecGetArrayReadF90(mat_diag, vec_ptr, ierr); CHKERRQ(ierr)
-
-      vol_local = vec_ptr
-
-      call VecRestoreArrayReadF90(mat_diag, vec_ptr, ierr); CHKERRQ(ierr)
-      call VecDestroy(mat_diag, ierr); CHKERRQ(ierr)
-      call VecGetArrayReadF90(grid%degree, vec_ptr, ierr); CHKERRQ(ierr)
-
-      rec_local_tri = int(sum(vec_ptr - 1))
-      allocate (edge_local(rec_local_tri))
-      allocate (adj_local_len(rec_local_tri))
-      allocate (adj_local_area(rec_local_tri))
-
-      temp_int = int(maxval(vec_ptr))
-      allocate (edge_temp(temp_int + 10))
-      allocate (adj_temp_area(temp_int))
-      allocate (adj_temp_len(temp_int))
-
-      pos1 = 0
-      pos2 = 0
-
-      ! ==================================================
-      !  Prepare connectivity matrices
-      ! ==================================================
-
-      call VecGetOwnershipRange(grid%connect_map, istart, iend, ierr); CHKERRQ(ierr)
-      allocate (connect_map_local(iend - istart))
-      call VecGetValues(grid%connect_map, iend - istart, (/(i, i=istart, iend)/), connect_map_local, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         allocate (recvcounts(size))
-         allocate (pos(size))
-      endif
-
-      call MPI_Gather(iend - istart, 1, MPI_INT, recvcounts, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Gather(istart, 1, MPI_INT, pos, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) allocate (connect_map(grid%num_pts_global))
-
-      call MPI_Gatherv(connect_map_local, grid%num_pts_local, &
-                       MPI_DOUBLE_PRECISION, connect_map, recvcounts, &
-                       pos, MPI_DOUBLE_PRECISION, io_rank, &
-                       MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         deallocate (pos)
-         deallocate (recvcounts)
-      endif
-
-      if (rank == io_rank) vsize = int(maxval(connect_map))
-      call MPI_Bcast(vsize, ONE_INTEGER_MPI, MPI_INTEGER, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      do i = 1, grid%num_pts_local
-         if (grid%vertex_ids(i) /= grid%num_pts_global) then
-
-            temp_int = int(vec_ptr(i))
-
-            call MatGetRow(grid%edgematrix, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, edge_temp, ierr); CHKERRQ(ierr)
-            edge_local(pos1 + 1:pos1 + temp_int - 1) = int(edge_temp(2:temp_int))
-            call MatRestoreRow(grid%edgematrix, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, edge_temp, ierr); CHKERRQ(ierr)
-
-            pos1 = pos1 + temp_int - 1
-            temp_int2 = int(vec_ptr(i) - 1)
-
-            call MatGetRow(grid%adjmatrix_len, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, adj_temp_len, ierr); CHKERRQ(ierr)
-            adj_local_len(pos2 + 1:pos2 + temp_int2) = adj_temp_len(1:temp_int2)
-            call MatRestoreRow(grid%adjmatrix_len, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, adj_temp_len, ierr); CHKERRQ(ierr)
-
-            call MatGetRow(grid%adjmatrix_area, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, adj_temp_area, ierr); CHKERRQ(ierr)
-            adj_local_area(pos2 + 1:pos2 + temp_int2) = adj_temp_area(2:temp_int)
-            call MatRestoreRow(grid%adjmatrix_area, grid%vertex_ids(i) - 1, ncols, PETSC_NULL_INTEGER, adj_temp_area, ierr); CHKERRQ(ierr)
-
-            pos2 = pos2 + temp_int2
-         endif
-      enddo
-
-      ! ====================================================
-      !  Parse out connectivity data
-      ! ====================================================
-      call MatGetOwnershipRange(grid%connectivity, istart, iend, ierr); CHKERRQ(ierr)
-      allocate (connectivity_local((iend - istart)*vsize))
-      allocate (temp_connections(vsize))
-
-      do i = 1, iend - istart
-         temp_connections = 0.
-         call MatGetRow(grid%connectivity, (i - 1) + istart, ncols, PETSC_NULL_INTEGER, temp_connections, ierr); CHKERRQ(ierr)
-         connectivity_local(((i - 1)*vsize) + 1:((i - 1)*vsize) + vsize) = temp_connections
-         call MatRestoreRow(grid%connectivity, (i - 1) + istart, ncols, PETSC_NULL_INTEGER, temp_connections, ierr)
-      enddo
-
-      deallocate (temp_connections)
-
-      if (rank == io_rank) then
-         allocate (recvcounts(size))
-         allocate (pos(size))
-      endif
-
-      call MPI_Gather(iend - istart, 1, MPI_INT, recvcounts, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Gather(istart, 1, MPI_INT, pos, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         pos = pos*vsize
-         recvcounts = recvcounts*vsize
-         allocate (connectivity_tmp(grid%num_pts_global*vsize))
-      endif
-
-      call MPI_Gatherv(connectivity_local, (iend - istart)*vsize, &
-                       MPI_DOUBLE_PRECISION, connectivity_tmp, recvcounts, &
-                       pos, MPI_DOUBLE_PRECISION, io_rank, &
-                       MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         allocate (connectivity(grid%num_pts_global, vsize))
-         connectivity = reshape(connectivity_tmp, (/grid%num_pts_global, vsize/), order=(/2, 1/))
-
-         deallocate (connectivity_tmp)
-         deallocate (pos)
-         deallocate (recvcounts)
-      endif
-
-      deallocate (connectivity_local)
-
-      ! ====================================================
-      !  Parse out AREAX data
-      ! ====================================================
-      call MatGetOwnershipRange(grid%connect_area, istart, iend, ierr); CHKERRQ(ierr)
-      allocate (areax_local((iend - istart)*vsize))
-      allocate (temp_connections(vsize))
-
-      do i = 1, iend - istart
-         temp_connections = 0.
-         call MatGetRow(grid%connect_area, (i - 1) + istart, ncols, PETSC_NULL_INTEGER, temp_connections, ierr); CHKERRQ(ierr)
-         areax_local(((i - 1)*vsize) + 1:((i - 1)*vsize) + vsize) = temp_connections
-         call MatRestoreRow(grid%connect_area, (i - 1) + istart, ncols, PETSC_NULL_INTEGER, temp_connections, ierr)
-      enddo
-
-      deallocate (temp_connections)
-
-      if (rank == io_rank) then
-         allocate (recvcounts(size))
-         allocate (pos(size))
-      endif
-
-      call MPI_Gather(iend - istart, 1, MPI_INT, recvcounts, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Gather(istart, 1, MPI_INT, pos, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         pos = pos*vsize
-         recvcounts = recvcounts*vsize
-         allocate (areax_tmp(grid%num_pts_global*vsize))
-      endif
-
-      call MPI_Gatherv(areax_local, (iend - istart)*vsize, &
-                       MPI_DOUBLE_PRECISION, areax_tmp, recvcounts, &
-                       pos, MPI_DOUBLE_PRECISION, io_rank, &
-                       MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         allocate (connect_area(grid%num_pts_global, vsize))
-         connect_area = reshape(areax_tmp, (/grid%num_pts_global, vsize/), order=(/2, 1/))
-
-         deallocate (areax_tmp)
-         deallocate (pos)
-         deallocate (recvcounts)
-      endif
-
-      deallocate (areax_local)
-
-      ! ====================================================
-
-      if (rank == io_rank) then
-         allocate (sendcounts_pts(size))
-         allocate (sendcounts_edge(size)) ! for the upper triangular case without diagonal element
-      endif
-
-      call MPI_Gather(grid%num_pts_local, 1, MPI_INT, sendcounts_pts, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-      call MPI_Gather(rec_local_tri, 1, MPI_INT, sendcounts_edge, 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      if (rank == io_rank) then
-         allocate (pos_pts(size))
-         allocate (pos_edge(size))
-         pos_pts(1) = 0
-         do irank = 1, size - 1
-            pos_pts(irank + 1) = pos_pts(irank) + sendcounts_pts(irank)
-         enddo
-         pos_edge(1) = 0
-         do irank = 1, size - 1
-            pos_edge(irank + 1) = pos_edge(irank) + sendcounts_edge(irank)
-         enddo
-         rec_tot_tri = pos_edge(size) + sendcounts_edge(size)
-      endif
-
-      ! calculate degree_local
-      allocate (degree_local(grid%num_pts_local))
-      call MPI_Scatter(pos_edge, 1, MPI_INT, degree_local(1), 1, MPI_INT, io_rank, MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      do i = 2, grid%num_pts_local
-         degree_local(i) = degree_local(i - 1) + int(vec_ptr(i - 1) - 1)
-      enddo
-
-      degree_local = degree_local + 1
-
-      call VecRestoreArrayReadF90(grid%degree, vec_ptr, ierr); CHKERRQ(ierr)
-
-#if DEBUG
-      print *, rank, 'vol_local=', vol_local
-      print *, rank, 'degree_local', degree_local
-      print *, rank, 'edge_lcoal=', edge_local
-      print *, rank, 'adj_local_len=', adj_local_len
-      print *, rank, 'adj_local_area=', adj_local_area
-      print *, rank, 'rec_local_tri=', rec_local_tri
-#endif
-
-      allocate (data_local_real(grid%num_pts_local*5 + rec_local_tri*3 + 2))
-      data_local_real(1:grid%num_pts_local) = vol_local
-      data_local_real(grid%num_pts_local + 1:grid%num_pts_local*2) = degree_local
-      data_local_real(grid%num_pts_local*2 + 1:grid%num_pts_local*2 + rec_local_tri) = edge_local
-
-      call VecGetArrayReadF90(grid%coordinates_vec, vec_ptr, ierr); CHKERRQ(ierr)
-
-      data_local_real(grid%num_pts_local*2 + rec_local_tri + 1:grid%num_pts_local*3 + rec_local_tri) = &
-         (/(vec_ptr((i - 1)*3 + 1), i=1, grid%num_pts_local)/)
-      data_local_real(grid%num_pts_local*3 + rec_local_tri + 1:grid%num_pts_local*4 + rec_local_tri) = &
-         (/(vec_ptr((i - 1)*3 + 2), i=1, grid%num_pts_local)/)
-      data_local_real(grid%num_pts_local*4 + rec_local_tri + 1:grid%num_pts_local*5 + rec_local_tri) = &
-         (/(vec_ptr((i - 1)*3 + 3), i=1, grid%num_pts_local)/)
-
-      call VecRestoreArrayReadF90(grid%coordinates_vec, vec_ptr, ierr); CHKERRQ(ierr)
-
-      data_local_real(grid%num_pts_local*5 + rec_local_tri + 1:grid%num_pts_local*5 + rec_local_tri*2) = adj_local_len
-      data_local_real(grid%num_pts_local*5 + rec_local_tri*2 + 1:grid%num_pts_local*5 + rec_local_tri*3) = adj_local_area
-      data_local_real(grid%num_pts_local*5 + rec_local_tri*3 + 1) = grid%num_pts_local
-      data_local_real(grid%num_pts_local*5 + rec_local_tri*3 + 2) = rec_local_tri
-
-      deallocate (vol_local)
-      deallocate (degree_local)
-      deallocate (edge_local)
-      deallocate (adj_local_len)
-      deallocate (adj_local_area)
-
-      call VecDestroy(grid%coordinates_vec, ierr); CHKERRQ(ierr)
-
-      ! prepare for gathering the data
-      if (rank == io_rank) then
-         allocate (sendcounts(size))
-         allocate (pos(size))
-         sendcounts = sendcounts_pts*5 + sendcounts_edge*3 + 2
-         pos = pos_pts*5 + pos_edge*3 + (/(2*(i - 1), i=1, size)/)
-         allocate (data_global_real(grid%num_pts_global*5 + rec_tot_tri*3 + 2*size))
-         deallocate (sendcounts_pts)
-         deallocate (pos_pts)
-         deallocate (sendcounts_edge)
-         deallocate (pos_edge)
-      endif
-
-      ! GAther the data to io_rank
-      call MPI_Gatherv(data_local_real, grid%num_pts_local*5 + rec_local_tri*3 + 2, &
-                       MPI_DOUBLE_PRECISION, data_global_real, sendcounts, &
-                       pos, MPI_DOUBLE_PRECISION, io_rank, &
-                       MPI_COMM_WORLD, ierr); CHKERRQ(ierr)
-
-      deallocate (data_local_real)
-
-9110  format(A80)
-9140  format(i10, 9i11)
-9150  format(A4)
-9160  format(10X, I11)
-
-      ! print to file
-      if (rank == io_rank) then
-         fileid_zone = 51
-
-         ! ---------------------------------------------
-         ! Build the ELEME materials char array
-         ! ---------------------------------------------
-
-         countmat = 0
-         allocate (MAT(grid%num_pts_global))
-
-         ! If a zone file is provided, then...
-         if (grid%zone_flag .EQV. PETSC_TRUE) then
-            open (fileid_zone, file=grid%zone_str)
-
-            do i = 1, 100000 ! TOUGH allows for a max n of nodes
-               read (fileid_zone, 9150) nnum
-               if (nnum .eq. 'nnum') then
-                  countmat = countmat + 1
-                  read (fileid_zone, 9160) NN
-                  allocate (MM(NN))
-                  read (fileid_zone, 9140) (MM(j), j=1, NN)
-                  MAT((/(MM(j), j=1, NN)/)) = Material(countmat)
-                  deallocate (MM)
-               endif
-               if (nnum .eq. 'stop') exit
-            enddo
-            close (fileid_zone)
-
-            ! else, read from the IMT values array
-         else
-
-            ! Does this need a do loop? MAT = grid%imt_values
-            do i = 1, grid%num_pts_global
-               MAT(i) = grid%imt_values(i)
-            enddo
-
-         endif
-
-         AHTX = 0.d0
-         allocate (ELE(grid%num_pts_global))
-         allocate (num_pts_0(size))
-         allocate (rec_local_tri_0(size))
-         allocate (indx(size))
-
-         indx = (/pos(2:size) - 1, pos(size) + sendcounts(size) - 1/)
-         num_pts_0 = int(data_global_real(indx))
-         rec_local_tri_0 = int(data_global_real(indx + 1))
-
-         ! global volumes
-         indx = pos + 1
-         deallocate (sendcounts)
-         deallocate (pos)
-
-         vol_global = (/(dabs(data_global_real(indx(i):indx(i) - 1 + num_pts_0(i))), i=1, size)/)
-
-         allocate (x(grid%num_pts_global))
-         allocate (y(grid%num_pts_global))
-         allocate (z(grid%num_pts_global))
-         allocate (adj_global_len(rec_tot_tri))
-         allocate (adj_global_area(rec_tot_tri))
-         allocate (degree_global(grid%num_pts_global))
-
-         indx = indx + num_pts_0
-         degree_global = (/(int(data_global_real(indx(i):indx(i) - 1 + num_pts_0(i))), i=1, size)/)
-         indx = indx + num_pts_0
-         edge_global = (/(int(data_global_real(indx(i):indx(i) - 1 + rec_local_tri_0(i))), i=1, size)/)
-
-         indx = indx + rec_local_tri_0
-         x = (/(data_global_real(indx(i):indx(i) - 1 + num_pts_0(i)), i=1, size)/)
-         indx = indx + num_pts_0
-         y = (/(data_global_real(indx(i):indx(i) - 1 + num_pts_0(i)), i=1, size)/)
-         indx = indx + num_pts_0
-         z = (/(data_global_real(indx(i):indx(i) - 1 + num_pts_0(i)), i=1, size)/)
-         indx = indx + num_pts_0
-         adj_global_len = (/(dabs(data_global_real(indx(i):indx(i) - 1 + rec_local_tri_0(i))), i=1, size)/)
-         indx = indx + rec_local_tri_0
-         adj_global_area = (/(dabs(data_global_real(indx(i):indx(i) - 1 + rec_local_tri_0(i))), i=1, size)/)
-
-         deallocate (data_global_real)
-         deallocate (num_pts_0)
-         deallocate (rec_local_tri_0)
-         deallocate (indx)
-
-         ! ---------------------------------------------
-         ! Begin the formatting and writing process
-         ! ---------------------------------------------
-
-         fileid = 49
-
-         if (grid%dump_flag .EQV. PETSC_TRUE) then
-            open (fileid, file=grid%dump_str)
-         else
-            open (fileid, file='MESH_VORONOI')
-         endif
-
-         ! write out the ELEME block
-         write (fileid, 9110) 'ELEME----1----*----2----*----3----*----4----*----5----*----6----*----7----*----8'
-
-         do i = 1, grid%num_pts_global
-            ! Get the element name
-            call idxToELNE(ELE(i), i, ELNE_len)
-
-            ! Assign AHTX
-            ! TODO: Is this right?
-            AHTX = connect_area(i, 1)
-
-            ! and write line to file
-            write (fileid, 9110) elemeTOUGH2(ELE(i), MAT(i), x(i), y(i), z(i), vol_global(i), AHTX)
-         enddo
-
-         ! write out the CONNE block
-         write (fileid, *)
-         write (fileid, 9110) 'CONNE----1----*----2----*----3----*----4----*----5----*----6----*----7----*----8'
-
-         pos1 = 1
-
-         ! BETAX is the cosine between u, the connection vector, and Fg, the gravitational vector
-         ! It is calculated using the following formula:
-         ! cos(theta) = u * Fg / (||u|| * ||Fg||)
-         !            = (9.81 * u_z) / (9.81 * sqrt(u_x^2 + u_y^2 + u_z^2))
-         !            = (u_z) / (sqrt(u_x^2 + u_y^2 + u_z^2))
-
-         !do i=1,grid%num_pts_global-1
-         !do k=degree_global(i),degree_global(i+1)-1
-
-         !  j = edge_global(k)
-
-         ! Are we on the same node?
-         !  if (j .eq. i) CYCLE
-
-         ! Calculate the cosine of Fg and the connection vector
-         !   temp_real = (x(i)-x(j))**2+(y(i)-y(j))**2+(z(i)-z(j))**2
-         !   cosine = (z(i)-z(j))/dsqrt(temp_real)
-
-         !   if ((adj_global_len(pos1) .eq. 0.d0) .or. (adj_global_area(pos1) .lt. 1.d-12)) then
-         !     pos1 = pos1 + 1
-         !     cycle
-         !   endif
-
-         !    isot = getISOT((/ x(i), y(i), z(i) /), (/ x(j), y(j), z(j) /))
-
-         !    write(fileid,9110) conneTOUGH2(ELE(i),ELE(j),isot,adj_global_len(pos1),adj_global_len(pos1),adj_global_area(pos1),cosine)
-         !    pos1 = pos1 + 1
-         !  enddo
-         !enddo
-
-         ! Iterate over all points...
-         do i = 1, grid%num_pts_global
-
-            ! Iterate over each connection...
-            do k = 2, int(connect_map(i))
-
-               j = int(connectivity(i, k))
-
-               ! Are we on the same node?
-               if (j .eq. i) CYCLE
-
-               ! Calculate the cosine of Fg and the connection vector
-               temp_real = (x(i) - x(j))**2 + (y(i) - y(j))**2 + (z(i) - z(j))**2
-               cosine = (z(i) - z(j))/dsqrt(temp_real)
-
-               ! TODO: This should be taken from len. NOT computed on the fly!
-               distance = 0.5*((z(j) - z(i))**2.+(y(j) - y(i))**2.+(x(j) - x(i))**2.)**0.5
-
-               ! TODO: Doesn't work for small values!!
-               if (connect_area(i, k) .lt. 0.0001) CYCLE
-
-               ! TODO: This should be parallel processed. NOT computed on the fly (single core!)
-               isot = getISOT((/x(i), y(i), z(i)/), (/x(j), y(j), z(j)/))
-
-               if ((print_isot_warning .eqv. .true.) .and. (isot == 0)) then
-                  print *, 'WARNING: At least one non-conforming connection vector. Setting ISOT to 0.'
-                  print_isot_warning = .false.
-               endif
-
-               write (fileid, 9110) conneTOUGH2(ELE(i), ELE(j), isot, distance, distance, connect_area(i, k), cosine)
-            enddo
-         enddo
-
-         ! Write empty line at EOF & close
-         write (fileid, *) ''
-         close (fileid)
-
-         deallocate (MAT)
-         deallocate (ELE)
-         deallocate (vol_global)
-         !  deallocate(degree_global)
-         deallocate (edge_global)
-         deallocate (x)
-         deallocate (y)
-         deallocate (z)
-         deallocate (adj_global_len)
-         deallocate (adj_global_area)
-
-      endif
-
-   end subroutine GridWriteTOUGH2
 
 !**************************************************************************
 

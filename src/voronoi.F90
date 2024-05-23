@@ -53,12 +53,6 @@ program voronoi
    call PetscOptionsGetString(PETSC_NULL_OPTIONS, PETSC_NULL_CHARACTER, '-avs', &
                               grid%avs_str, grid%avs_flag, ierr); CHKERRQ(ierr)
 
-   call PetscOptionsGetString(PETSC_NULL_OPTIONS, PETSC_NULL_CHARACTER, '-lg', &
-                              grid%lg_str, grid%lg_flag, ierr); CHKERRQ(ierr)
-
-   call PetscOptionsGetString(PETSC_NULL_OPTIONS, PETSC_NULL_CHARACTER, '-zone', &
-                              grid%zone_str, grid%zone_flag, ierr); CHKERRQ(ierr)
-
    call PetscOptionsGetString(PETSC_NULL_OPTIONS, PETSC_NULL_CHARACTER, '-o', &
                               grid%dump_str, grid%dump_flag, ierr); CHKERRQ(ierr)
 
@@ -131,33 +125,26 @@ program voronoi
    if (grid%out_flag .EQV. PETSC_TRUE) then
       select case (grid%out_str(:4))
       case ('pflo')
-         out_type = 3
-         grid%outtype = 3
+         out_type = 1
+         grid%outtype = 1
          grid%is_tough = PETSC_TRUE
          tmp_str = 'pflotran.uge'
-      case ('fehm')
-         out_type = 1
-         grid%outtype = 1
-         tmp_str = 'voronoi.stor'
-      case ('toug')
-         out_type = 2
-         grid%is_tough = PETSC_TRUE
-         grid%outtype = 2
-         tmp_str = 'VORONOI_MESH'
       case ('hdf5')
-         out_type = 4
-         grid%outtype = 4
+         out_type = 2
+         grid%outtype = 2
          tmp_str = 'voronoi.h5'
       case default
-         if (rank == io_rank) print *, 'UNKNOWN OUTPUT FLAG: DEFAULTING TO FEHM'
+         if (rank == io_rank) print *, 'UNKNOWN OUTPUT FLAG: DEFAULTING TO PFLOTRAN'
          out_type = 1
          grid%outtype = 1
-         tmp_str = 'voronoi.stor'
+         grid%is_tough = PETSC_TRUE
+         tmp_str = 'pflotran.uge'
       end select
    else
       out_type = 1
       grid%outtype = 1
-      tmp_str = 'voronoi.stor'
+      grid%is_tough = PETSC_TRUE
+      tmp_str = 'pflotran.uge'
    endif
 
    if (help_bool .EQV. PETSC_TRUE) then
@@ -165,7 +152,7 @@ program voronoi
    endif
 
    ! Check if no flags were passed
-   if ((grid%lg_flag .eqv. PETSC_FALSE) .AND. (grid%avs_flag .eqv. PETSC_FALSE)) then
+   if ((grid%avs_flag .eqv. PETSC_FALSE)) then
       if (rank == io_rank) call short_help()
       return
    endif
@@ -220,14 +207,9 @@ program voronoi
 
    ! Determine what the desired output format is, then write to it
    if (out_type == 1) then
-      ! call GridWriteFEHM(grid, atts, rank, size)
-      !call TEMPGridWriteFEHM(grid,atts,rank,size)
-   elseif (out_type == 2) then
-      call GridWriteTOUGH2(grid, rank, size, 5)
-   elseif (out_type == 3) then
       !call CreateConnMatrix(grid,size,rank)
       call GridWritePFLOTRAN(grid, rank, size)
-   elseif (out_type == 4) then
+   elseif (out_type == 2) then
       call GridWriteHDF5(grid, rank, size)
    endif
 
@@ -259,11 +241,6 @@ contains
       print '(a)', '     -avs FILE'
       print '(a)', '             Configure Voronoi to receive FILE as input. FILE must be'
       print '(a)', '             an AVS-UCD mesh with either triangle or tetrahedral elements.'
-      print '(a)', ''
-      print '(a)', '     -lg FILE'
-      print '(a)', '             Runs LaGriT infile FILE to completion, then performs a Voronoi'
-      print '(a)', '             tesselation on the current mesh object.'
-      print '(a)', '             For more information on LaGriT, visit: http://lagrit.lanl.gov'
       print '(a)', ''
       print '(a)', '     -o FILE'
       print '(a)', '             Define the output file to be written to. Defaults to "voronoi.stor".'
