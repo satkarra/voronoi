@@ -76,8 +76,6 @@ contains
 
          if (grid%avs_flag .EQV. PETSC_TRUE) then
             input_string = grid%avs_str
-         else if (grid%lg_flag .EQV. PETSC_TRUE) then
-            input_string = grid%lg_str
          else
             input_string = 'ERROR: Undefined input'
          endif

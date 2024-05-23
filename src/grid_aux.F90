@@ -40,11 +40,11 @@ module Grid_Aux_module
   end type point3d_type
   
   type, public :: grid_type
-    character(len=150) :: avs_str, lg_str, out_str, zone_str, dump_str ! argument passing strings
+    character(len=150) :: avs_str, out_str, dump_str ! argument passing strings
     character(len=150) :: outfile                                      ! stor file output
     character(len=5), dimension(:), allocatable :: imt_values
 
-    PetscBool :: lg_flag, avs_flag, out_flag, zone_flag, dump_flag, verbose_flag     ! argument passing flags
+    PetscBool :: avs_flag, out_flag, dump_flag, verbose_flag     ! argument passing flags
     PetscBool :: is_tough
     PetscInt :: cv_type ! control volume type
     PetscInt :: verbose, outtype
@@ -121,19 +121,23 @@ function GridCreate()
   grid%num_elems_global = 0 
   grid%num_elems_local = 0 
   grid%num_elems_max = 0 
+
+  ! Vectors
+  grid%coordinates_local = PETSC_NULL_VEC
+  grid%coordinates_vec = PETSC_NULL_VEC
   grid%connections = PETSC_NULL_VEC
   grid%degree = PETSC_NULL_VEC
   grid%degree_tot = PETSC_NULL_VEC
   grid%connect_map = PETSC_NULL_VEC
+
+  ! Matrices
   grid%adjmatrix = PETSC_NULL_MAT
   grid%adjmatrix_full = PETSC_NULL_MAT
-
-  ! TOUGH2
   grid%adjmatrix_area = PETSC_NULL_MAT
   grid%adjmatrix_len = PETSC_NULL_MAT
-  ! TOUGH2 END
-  
   grid%edgematrix = PETSC_NULL_MAT
+  grid%connectivity = PETSC_NULL_MAT
+  grid%connect_area = PETSC_NULL_MAT
 
   GridCreate => grid
   
@@ -182,40 +186,51 @@ subroutine GridDestroy(grid)
   type(grid_type), pointer :: grid
   PetscErrorCode :: ierr
 
+
+  ! Vectors
+  if (grid%coordinates_local /= PETSC_NULL_VEC) then
+    call VecDestroy(grid%coordinates_local,ierr);CHKERRQ(ierr)
+  endif
+  if (grid%coordinates_vec /= PETSC_NULL_VEC) then
+    call VecDestroy(grid%coordinates_vec,ierr);CHKERRQ(ierr)
+  endif
   if (grid%connections /= PETSC_NULL_VEC) then
     call VecDestroy(grid%connections,ierr);CHKERRQ(ierr)
   endif
+    if (grid%degree_tot /= PETSC_NULL_VEC) then
+    call VecDestroy(grid%degree_tot,ierr);CHKERRQ(ierr)
+  endif 
+    if (grid%degree /= PETSC_NULL_VEC) then
+    call VecDestroy(grid%degree,ierr);CHKERRQ(ierr)
+  endif
+  if (grid%connect_map /= PETSC_NULL_VEC) then
+    call VecDestroy(grid%connect_map,ierr);CHKERRQ(ierr)
+  endif
+
+
+  ! matrices 
   if (grid%adjmatrix /= PETSC_NULL_MAT) then
     call MatDestroy(grid%adjmatrix,ierr);CHKERRQ(ierr)
   endif
-
-  ! BEGIN TOUGH2
   if (grid%adjmatrix_len /= PETSC_NULL_MAT) then
     call MatDestroy(grid%adjmatrix_len,ierr);CHKERRQ(ierr)
   endif
   if (grid%adjmatrix_area /= PETSC_NULL_MAT) then
     call MatDestroy(grid%adjmatrix_area,ierr);CHKERRQ(ierr)
   endif
-  ! END TOUGH2
-
   if (grid%adjmatrix_full /= PETSC_NULL_MAT) then
     call MatDestroy(grid%adjmatrix_full,ierr);CHKERRQ(ierr)
   endif
   if (grid%edgematrix /= PETSC_NULL_MAT) then
     call MatDestroy(grid%edgematrix,ierr);CHKERRQ(ierr)
   endif
-  if (grid%coordinates_local /= PETSC_NULL_VEC) then
-    call VecDestroy(grid%coordinates_local,ierr);CHKERRQ(ierr)
+  if (grid%connectivity /= PETSC_NULL_MAT) then
+    call MatDestroy(grid%connectivity,ierr);CHKERRQ(ierr)
   endif
-  if (grid%coordinates_vec /=PETSC_NULL_VEC) then
-    call VecDestroy(grid%coordinates_vec,ierr);CHKERRQ(ierr)
+  if (grid%connect_area /= PETSC_NULL_MAT) then
+    call MatDestroy(grid%connect_area,ierr);CHKERRQ(ierr)
   endif
-  if (grid%degree /= PETSC_NULL_VEC) then
-    call VecDestroy(grid%degree,ierr);CHKERRQ(ierr)
-  endif
-  if (grid%degree_tot /= PETSC_NULL_VEC) then
-    call VecDestroy(grid%degree_tot,ierr);CHKERRQ(ierr)
-  endif 
+
 
   if (.not.associated(grid)) return
   deallocate(grid%vertex_ids)
