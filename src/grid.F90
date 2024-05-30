@@ -28,6 +28,7 @@ module Grid_module
 
 contains
 
+! ************************************************************************** !
    subroutine PrintInitialConditions(grid, atts, rank, size)
 
 #include "petsc/finclude/petscvec.h"
@@ -130,6 +131,7 @@ contains
 
    end subroutine PrintMeshAttributes
 
+! ************************************************************************** !
    subroutine mpi_print(message, rank, io_rank)
 #include "petsc/finclude/petscvec.h"
       use petscvec
@@ -149,6 +151,7 @@ contains
 
    end subroutine mpi_print
 
+! ************************************************************************** !
    integer function ParseDimension(infile, length)
       !
       ! Scans an AVS file for element types,
@@ -679,8 +682,8 @@ contains
       ! TOUGH2 END -----------------------------------
 
 #if DEBUG
-      write (filename, '("vertices_local_",I1,".out")') rank
-      call PetscViewerASCIIOpen(PETSC_COMM_SELF, filename, viewer, ierr); CHKERRQ(ierr)
+      write (filename, *) rank
+      call PetscViewerASCIIOpen(PETSC_COMM_SELF, 'vertices_local_' // trim(adjustl(filename)) // '.out', viewer, ierr); CHKERRQ(ierr)
       call VecView(grid%coordinates_local, viewer, ierr); CHKERRQ(ierr)
       call PetscViewerDestroy(viewer, ierr); CHKERRQ(ierr)
 
@@ -860,8 +863,6 @@ contains
       !endif
       ! TOUGH2 END
 
-      call VecDestroy(grid%coordinates_local, ierr); CHKERRQ(ierr)
-
       ! elem%connectivity needs to stay alive for PFLOTRAN dump
       if (grid%outtype /= 1) deallocate (grid%elem_connectivity)
       deallocate (grid%vertex_ids_need)
@@ -984,8 +985,6 @@ contains
       call MatAssemblyEnd(grid%adjmatrix_area, MAT_FINAL_ASSEMBLY, ierr); CHKERRQ(ierr)
       !endif
       ! TOUGH2 END
-
-      call VecDestroy(grid%coordinates_local, ierr); CHKERRQ(ierr)
 
 ! elem%connectivity needs to stay alive for PFLOTRAN dump
       if (grid%outtype /= 1) deallocate (grid%elem_connectivity)
@@ -2609,8 +2608,8 @@ contains
 
 #if DEBUG
       print *, rank, 'vol_local=', vol_local
-      print *, rank, 'degree_local', degree_local
-      print *, rank, 'edge_lcoal=', edge_local
+      print *, rank, 'degree_local=', degree_local
+      print *, rank, 'edge_local=', edge_local
       print *, rank, 'adj_local_len=', adj_local_len
       print *, rank, 'adj_local_area=', adj_local_area
       print *, rank, 'rec_local_tri=', rec_local_tri
