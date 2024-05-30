@@ -792,13 +792,16 @@ contains
 
       type(grid_type) :: grid
       type(diag_atts) :: atts
-      PetscInt  :: i, temp(3), rank
+      PetscInt  :: i, rank
       PetscReal :: cell_area(3), cell_vol(3), cell_len(3)
+      PetscInt, dimension(:), allocatable :: temp
       PetscErrorCode :: ierr
 
 #if DEBUG
       PetscViewer :: viewer
 #endif
+      allocate (temp(grid%ndim + 1))
+      
       temp = 0
 
       do i = 1, grid%num_elems_local
@@ -806,7 +809,7 @@ contains
          temp = grid%elem_connectivity(i, :)
 
          ! calculate the areas,volumes and edge lengths associated with each element stored on processors
-         call PhaseAreaVolumeLength(grid, rank, cell_area, cell_vol, cell_len, temp(1), temp(2), temp(3), i, atts)
+         call PhaseAreaVolumeLength(grid, rank, cell_area, cell_vol, cell_len, temp, i, atts)
 
          ! dump the results into the adjacent matrix grid%adjmatrix
          ! dump areas/lengths
@@ -1178,7 +1181,7 @@ contains
 
 !**************************************************************************
 
-   subroutine PhaseAreaVolumeLength(grid, rank, cell_area, cell_vol, cell_len, idx1, idx2, idx3, ielem, atts)
+   subroutine PhaseAreaVolumeLength(grid, rank, cell_area, cell_vol, cell_len, idx, ielem, atts)
       !
       ! Calculates the volumes and areas for each readin elements/triangle
       !
@@ -1194,6 +1197,7 @@ contains
       type(grid_type) :: grid
       type(diag_atts) :: atts
       PetscInt :: rank
+      PetscInt :: idx(:) 
       PetscInt :: idx1, idx2, idx3 ! local index of element vertices
       PetscInt :: ielem
       PetscScalar, dimension(3) :: v1, v2, v3, nn, lcc, e12, e13, e23
@@ -1201,6 +1205,10 @@ contains
       PetscReal :: cell_area(3), cell_vol(3), cell_len(3), tmp(3)
       PetscReal, pointer :: vec_ptr(:)
       PetscErrorCode :: ierr
+
+      idx1 = idx(1)
+      idx2 = idx(2)
+      idx3 = idx(3)
 
 !  Fetch the coordinates
       call VecGetArrayF90(grid%coordinates_local, vec_ptr, ierr); CHKERRQ(ierr)
@@ -2027,65 +2035,6 @@ contains
 
    end subroutine GridWriteHDF5
 
-!**************************************************************************
-
-   character(len=5) function Material(countmat)
-      ! Returns a 5-char string indicating the material type of
-      ! the fracture.
-      !
-      ! Author: Zhuolin Qu, LANL
-      ! Revised: Daniel Livingston, LANL
-      ! Revision: 03/01/2018
-      !
-      implicit none
-
-      PetscInt :: countmat
-
-      SELECT CASE (countmat)
-      CASE (1)
-         Material = 'clayr'
-      CASE (2)
-         Material = 'waste'
-      CASE (3)
-         Material = 'bento'
-      CASE (4)
-         Material = 'inwas'
-      CASE (5)
-         Material = 'edzal'
-      CASE (6)
-         Material = 'backf'
-      CASE (7)
-         Material = 'inben'
-      CASE (8)
-         Material = 'inbac'
-      CASE (9)
-         Material = 'boun1'
-      CASE (10)
-         Material = 'bounf'
-      CASE (11)
-         Material = 'sourc'
-      CASE (12)
-         Material = 'mbent'
-      CASE (13)
-         Material = 'medzw'
-      CASE (14)
-         Material = 'mlbkf'
-      CASE (15)
-         Material = 'msbkf'
-      CASE (16)
-         Material = 'edzal'
-      CASE (17)
-         Material = 'mbcez'
-      CASE (18)
-         Material = 'edzat'
-      CASE (19)
-         Material = 'mbeca'
-      CASE (20)
-         Material = 'mbkad'
-      CASE DEFAULT
-         Material = '?????'
-      END SELECT
-   end function
 
 !**************************************************************************
 
