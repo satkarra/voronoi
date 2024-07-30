@@ -62,38 +62,12 @@ export HDF5_DIR=${PETSC_DIR}/${PETSC_ARCH}/lib
 make PETSC_DIR=${PETSC_DIR} PETSC_ARCH=${PETSC_ARCH} all
 ```
 
-### Building LaGriT ###
 
-**3.0** Configuring LaGriT
-
-The VORONOI makefile will automatically generate the needed LaGriT libraries
-and object files - all it needs to know is the LaGriT source directory.
-
-If you have an existing clone of LaGriT on your system, then export that path
-to the environment variable `LAGRIT_DIR`:
-
-```sh
-export LAGRIT_DIR=/path/to/LaGriT/
-```
-
-If you do not already have an existing LaGriT clone on your system,
-then clone it from GitHub:
-
-```sh
-git clone https://github.com/lanl/LaGriT.git LaGriT
-export LAGRIT_DIR=$(pwd)/LaGriT/
-```
 
 ### Building VORONOI ###
 
-**4.0.** First, LaGriT libraries must be compiled. Navigate into the `src/` directory 
+**4.0.** Navigate into the `src/` directory 
 of the VORONOI repo and run
-
-```sh
-make lglibs
-```
-
-After this completes successfully, run
 
 ```sh
 make voronoi
