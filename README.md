@@ -26,6 +26,10 @@ It then finds the Voronoi dual or median of that mesh, and writes it in a solver
 
 For building instructions, see the [Build page](https://lanl.github.io/voronoi/docs/building/) or repo pages at [voronoi/docs/content/docs/](https://github.com/lanl/voronoi/tree/master/docs/content/docs)
 
+
+### Usage ###
+ mpirun -np 4 ./voronoi -avs mesh_in_avs_fomrat.inp -type pflotran
+
 ### License ###
 
 VORONOI is open-source software licensed under the 3-Clause BSD License. LANL Copyright No. C19012.
