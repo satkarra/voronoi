@@ -24,7 +24,7 @@ It then finds the Voronoi dual or median of that mesh, and writes it in a solver
 
 ### Building ###
 
-For building instructions, see the [Build page](https://lanl.github.io/voronoi/docs/building/) or repo pages at [voronoi/docs/content/docs/](https://github.com/satkarra/voronoi/tree/master/docs/content/docs)
+For building instructions, see the repo pages at [voronoi/docs/content/docs/](https://github.com/satkarra/voronoi/tree/master/docs/content/docs)
 
 
 ### Usage ###
