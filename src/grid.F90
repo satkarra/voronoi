@@ -21,6 +21,8 @@ module Grid_module
              CreateEdgeMatrix, &
              GridWriteHDF5, &
              GridWritePFLOTRAN, &
+             GridWriteVoronoiVTKWrapper, &
+             GridWriteVoronoiVTK, &
              CreateConnMatrix, &
              PrintInitialConditions, &
              PrintMeshAttributes, &
@@ -428,6 +430,7 @@ contains
 
       ! Initialize vectors for PFLOTRAN cell centers and volumes
       if (grid%outtype == 1) allocate (grid%cell_cc(grid%num_elems_local, 3))
+      if (grid%outtype == 1) allocate (grid%face_cc(grid%num_elems_local, 12))
       if (grid%outtype == 1) allocate (grid%cell_vol(grid%num_elems_local))
 
       grid%elem_ids = 0
@@ -1128,6 +1131,20 @@ contains
 
       ! Store tetrahedron center
       if (grid%outtype == 1) grid%cell_cc(ielem, :) = C1234
+      if (grid%outtype == 1) then
+         grid%face_cc(ielem, 1) = C123(1)
+         grid%face_cc(ielem, 2) = C123(2)
+         grid%face_cc(ielem, 3) = C123(3)
+         grid%face_cc(ielem, 4) = C124(1)
+         grid%face_cc(ielem, 5) = C124(2)
+         grid%face_cc(ielem, 6) = C124(3)
+         grid%face_cc(ielem, 7) = C134(1)
+         grid%face_cc(ielem, 8) = C134(2)
+         grid%face_cc(ielem, 9) = C134(3)
+         grid%face_cc(ielem, 10) = C234(1)
+         grid%face_cc(ielem, 11) = C234(2)
+         grid%face_cc(ielem, 12) = C234(3)
+      endif
       if (grid%outtype == 1) grid%cell_vol(ielem) = Volume(v1, v2, v3, v4)
 
       ! -- Diagnostics collection -----------------------------
@@ -2593,6 +2610,146 @@ contains
       endif
 
    end subroutine GridWritePFLOTRAN
+
+!**************************************************************************
+   subroutine GridWriteVoronoiVTKWrapper(grid, size)
+      !
+      ! Each rank the voronoi connectivity info
+      !
+      ! Author: Satish Karra, PNNL
+      ! Date: 07/29/2024
+      !
+
+#include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscmat.h"
+
+      use petscvec
+      use petscmat
+
+      implicit none
+
+      type(grid_type) :: grid
+      PetscInt, parameter :: fid = 86
+      character(len=MAXSTRINGLENGTH) :: filename, string, string1
+      character(len=MAXSTRINGLENGTH) :: filename_store
+      PetscInt :: irank, size
+
+      filename = 'voronoi_mesh'
+      filename_store = filename
+
+      filename = trim(adjustl(filename)) // '.pvtp'
+
+      open (unit=fid, file=filename, action='write')
+
+      ! Write header
+      write(fid, '(a)') '<?xml version="1.0"?>'
+      write(fid, '(a)') '<VTKFile type="PPolyData" version="0.1" byte_order="LittleEndian">'
+      write(fid, '(a)') '  <PPolyData GhostLevel="0">'
+      write(fid, '(a)') '    <PPoints>'
+      write(fid, '(a)') '        <PDataArray type="Float32" NumberOfComponents="3"/>'
+      write(fid, '(a)') '    </PPoints>'
+      do irank = 1, size
+         write(string,*) irank-1
+         write(fid,'(a)') '    <Piece Source="' // & 
+            trim(adjustl(filename_store)) // &
+            '_proc' // trim(adjustl(string)) // '.vtp"/>'
+      enddo
+      write(fid, '(a)') '  </PPolyData>'
+      write(fid, '(a)') '</VTKFile>'
+
+
+      close(fid)
+
+   end subroutine GridWriteVoronoiVTKWrapper
+ 
+!**************************************************************************
+   subroutine GridWriteVoronoiVTK(grid, rank, size)
+      !
+      ! Each rank the voronoi connectivity info
+      !
+      ! Author: Satish Karra, PNNL
+      ! Date: 07/29/2024
+      !
+
+#include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscmat.h"
+
+      use petscvec
+      use petscmat
+
+      implicit none
+
+      type(grid_type) :: grid
+      PetscInt, parameter :: fid = 86
+      PetscInt, parameter :: connectivity_offset = 5
+      PetscInt, parameter :: point_offset = 8
+      character(len=MAXSTRINGLENGTH) :: filename, string, string1
+      character(len=MAXSTRINGLENGTH) :: filename_store
+      PetscInt :: rank, irank, size, ipt, iconn, ielem, counter
+
+      filename = 'voronoi_mesh'
+      filename_store = filename
+
+      1000 format(10x,es13.6,1x,es13.6,1x,es13.6)
+      1030 format(10x,i20)
+
+      write(string, *) rank
+      filename = trim(adjustl(filename)) // '_proc' // trim(adjustl(string)) // &
+         '.vtp'
+      filename = trim(adjustl(filename))
+
+      open (unit=fid, file=filename, action='write')
+
+      ! Write header
+      write(fid, '(a)') '<?xml version="1.0"?>'
+      write(fid, '(a)') '<VTKFile type="PolyData" version="0.1" byte_order="LittleEndian">'
+      write(fid, '(a)') '  <PolyData>'
+      write(string, *) grid%num_elems_local*5
+      write(string1, *) grid%num_elems_local*4
+      write(fid, '(a)') '    <Piece NumberOfPoints="'// trim(adjustl(string)) // &
+      '" NumberOfLines="'// trim(adjustl(string1)) // '">'
+      write(fid, '(a)') '    <Points>'
+      write(fid, '(a)') '    <DataArray type="Float32" NumberOfComponents="3" format="ascii">'
+      do ielem = 1, grid%num_elems_local
+         write(fid, 1000) grid%cell_cc(ielem, :)
+         write(fid, 1000) grid%face_cc(ielem, :)
+      enddo
+      write(fid, '(a)') '    </DataArray>'
+      write(fid, '(a)') '    </Points>'
+      write(fid, '(a)') '    <Lines>'
+      write(fid, '(a)') '    <DataArray type="Int32" Name="connectivity" format="ascii">'
+      counter = 0
+      do ielem = 1, grid%num_elems_local
+         write(fid, 1030) counter+0
+         write(fid, 1030) counter+1
+         write(fid, 1030) counter+0
+         write(fid, 1030) counter+2
+         write(fid, 1030) counter+0
+         write(fid, 1030) counter+3
+         write(fid, 1030) counter+0
+         write(fid, 1030) counter+4
+         counter = counter + connectivity_offset
+      enddo
+      write(fid, '(a)') '    </DataArray>'
+      write(fid, '(a)') '    <DataArray type="Int32" Name="offsets" format="ascii">'
+      counter = 0
+      do ielem = 1, grid%num_elems_local
+         do iconn = 1, 4
+            write(fid, 1030) 2*iconn + counter
+         enddo
+         counter = counter + point_offset
+      enddo
+      write(fid, '(a)') '    </DataArray>'
+      write(fid, '(a)') '    </Lines>'
+      write(fid, '(a)') '    </Piece>'
+      write(fid, '(a)') '  </PolyData>'
+      write(fid, '(a)') '</VTKFile>'
+
+
+      close(fid)
+
+   end subroutine GridWriteVoronoiVTK
+
 
 !===========================================================
 
