@@ -25,9 +25,9 @@ A list of available commands can be found by running:
 
 ### Examples ###
 
-To generate a VORONOI tessellation in the FEHM format from an AVS mesh, run
+To generate a VORONOI tessellation in the PFLOTRAN format from an AVS mesh, run
 
-    mpiexec -np 4 voronoi -avs my_mesh.inp -type fehm -o my_mesh.stor
+    mpiexec -np 4 voronoi -avs my_mesh.inp -type pflotran -o my_mesh.uge
     
 To build a median tessellation in a PFLOTRAN format with a LaGriT infile, run
 
