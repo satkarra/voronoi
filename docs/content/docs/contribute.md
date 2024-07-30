@@ -12,7 +12,7 @@ toc = true
 
 Pull requests for missing features, bug fixes, and documentation updates are more than welcome. To contribute, please submit a pull request at
 
-    github.com/lanl/voronoi
+    github.com/satkarra/voronoi
 
 To ensure the best chance of acceptance for your pull request, please ensure that:
 
@@ -26,7 +26,7 @@ To ensure the best chance of acceptance for your pull request, please ensure tha
 
 If you notice missing features or bugs but cannot contribute, please submit an issue on the GitHub Issues page. If reporting a bug, include your OS type/version, shell type, FC/CXX compiler name/version, and steps to reproduce.
 
-To directly reach the developers, please email [livingston@lanl.gov](mailto:livingston@lanl.gov).
+To directly reach the developers, please email [karra@pnnl.gov](mailto:karra@pnnl.gov).
 
 
 ------------------------------------
