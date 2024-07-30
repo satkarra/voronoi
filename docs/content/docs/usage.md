@@ -17,8 +17,6 @@ toc = true
 | -cv [voronoi,median]              | control volume type                         |
 | -d                                | write mesh statistics to stdout             |
 | -o                                | filepath to save geometric coefficient data |
-| -compress                         | coefficient compression (FEHM only)         |
-| -dedud                            | epsilon coefficient removal (FEHM only)     |
 
 More detailed information can be run by calling
 
