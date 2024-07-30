@@ -16,19 +16,14 @@ The program accepts a Delaunay mesh composed of one of four element types: trian
 
 It then finds the Voronoi dual or median of that mesh, and writes it in a solver-specific format:
 
-1. FEHM (`.stor`)
-2. PFLOTRAN (`.uge`)
-3. TOUGH (`MESH`)
-4. HDF5 (for general use; `.h5`)
+1. PFLOTRAN (`.uge`)
+2. HDF5 (for general use; `.h5`)
 
 ### Features ###
 
 * Accurate calculation of Voronoi/Median cell volume and cell face area in 2D and 3D
 * Reads AVS and LaGriT input files (.lgi)
-* Outputs to FEHM, PFLOTRAN, TOUGH, and HDF5
+* Outputs to PFLOTRAN
 * Outputs visualization of control volume cells
-* Assigns ROCK coefficients based on node attributes (TOUGH)
-* Automatic element assignment of isotropic / anisotropic permeability coefficients (TOUGH)
-* Removes duplicate and negligable coefficients (FEHM)
 * Built with PETSc for parallel execution and sparse matrix data types
 * Cross-platform & open source
