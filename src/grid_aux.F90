@@ -55,6 +55,7 @@ module Grid_Aux_module
     PetscInt, pointer :: elem_connectivity(:,:)
     
     PetscReal, pointer :: cell_cc(:,:) ! PFLOTRAN
+    PetscReal, pointer :: face_cc(:,:) ! PFLOTRAN
     PetscReal, pointer :: cell_vol(:)  ! PFLOTRAN
 
     PetscInt :: num_elems_global  ! Number of cells in the entire domain
@@ -114,6 +115,7 @@ function GridCreate()
   nullify(grid%elem_connectivity)
 
   nullify(grid%cell_cc)  ! PFLOTRAN
+  nullify(grid%face_cc)  ! PFLOTRAN
   nullify(grid%cell_vol) ! PFLOTRAN
 
   grid%is_tough = PETSC_FALSE

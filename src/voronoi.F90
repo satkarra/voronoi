@@ -209,6 +209,8 @@ program voronoi
    if (out_type == 1) then
       !call CreateConnMatrix(grid,size,rank)
       call GridWritePFLOTRAN(grid, rank, size)
+      if (rank == io_rank) call GridWriteVoronoiVTKWrapper(grid, size)
+      call GridWriteVoronoiVTK(grid, rank, size)
    elseif (out_type == 2) then
       call GridWriteHDF5(grid, rank, size)
    endif
