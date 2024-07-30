@@ -29,7 +29,7 @@ For building instructions, see the repo pages at https://github.com/satkarra/vor
 
 
 ### Usage ###
-``` mpirun -np 4 ./voronoi -avs mesh_in_avs.inp -type pflotran``
+`mpirun -np 4 ./voronoi -avs mesh_in_avs.inp -type pflotran`
 
 ### License ###
 
